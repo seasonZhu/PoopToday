@@ -377,5 +377,70 @@ class Business {
     });
   }
 
+  Future<PeriodStatistics> statistics(DateTime start, DateTime end) async {
+    final first = formatDate(start);
+    final last = formatDate(end).compareTo(today) > 0 ? today : formatDate(end);
+    return _db.transaction((txn) async {
+      final rows = await txn.rawQuery(
+        'SELECT * FROM records WHERE deleted = 0 AND profile_id = (SELECT id FROM profiles WHERE $_activeWhere) AND date >= ? AND date <= ?',
+        [first, last],
+      );
+      final confirmations = await txn.rawQuery(
+        'SELECT date FROM no_poop WHERE profile_id = (SELECT id FROM profiles WHERE $_activeWhere) AND date >= ? AND date <= ?',
+        [first, last],
+      );
+      final recordedDays = rows.map((r) => r['date']).toSet().length;
+      final days = first.compareTo(last) > 0
+          ? 0
+          : DateTime.utc(
+                      DateTime.parse(last).year,
+                      DateTime.parse(last).month,
+                      DateTime.parse(last).day,
+                    )
+                    .difference(
+                      DateTime.utc(start.year, start.month, start.day),
+                    )
+                    .inDays +
+                1;
+      final ease = {for (final name in easeOptions) name: 0};
+      final amount = <String, int>{};
+      for (final row in rows) {
+        final e = easeCategory(row);
+        final a = amountCategory(row);
+        ease[e] = (ease[e] ?? 0) + 1;
+        amount[a] = (amount[a] ?? 0) + 1;
+      }
+      final keys = amount.keys.toList()
+        ..sort(
+          (a, b) => (int.tryParse(a) ?? 100).compareTo(int.tryParse(b) ?? 100),
+        );
+      return PeriodStatistics(
+        rows.length,
+        recordedDays,
+        confirmations.length,
+        days - recordedDays - confirmations.length,
+        ease,
+        {for (final key in keys) key: amount[key]!},
+      );
+    });
+  }
+
   Future<void> close() => _db.close();
+}
+
+class PeriodStatistics {
+  const PeriodStatistics(
+    this.total,
+    this.recordedDays,
+    this.confirmedDays,
+    this.unfilledDays,
+    this.ease,
+    this.amount,
+  );
+  final int total;
+  final int recordedDays;
+  final int confirmedDays;
+  final int unfilledDays;
+  final Map<String, int> ease;
+  final Map<String, int> amount;
 }

@@ -50,7 +50,7 @@ class _RecordPageState extends State<RecordPage> {
   final phoneController = TextEditingController();
   final amountController = TextEditingController();
   late String selectedDate = widget.business.today;
-  DateTime? calendarMonth;
+  late DateTime calendarMonth = DateTime.parse(widget.business.today);
   int calendarRevision = 0;
   Map<String, int> counts = {};
   Map<String, Object?>? editing;
@@ -170,6 +170,10 @@ class _RecordPageState extends State<RecordPage> {
         amountController.clear();
       }
       await refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('保存成功')));
+      }
     } on ArgumentError catch (e) {
       if (mounted) setState(() => error = e.message.toString());
     } catch (_) {
@@ -307,7 +311,7 @@ class _RecordPageState extends State<RecordPage> {
         amountController.clear();
         phoneController.clear();
         selectedDate = widget.business.today;
-        calendarMonth = null;
+        calendarMonth = DateTime.parse(widget.business.today);
         calendarRevision++;
         calendarHome = true;
         error = null;
@@ -390,6 +394,13 @@ class _RecordPageState extends State<RecordPage> {
                     decoration: const InputDecoration(labelText: '手机号'),
                   ),
                 ] else ...[
+                  if (calendarHome)
+                    HomeStatistics(
+                      business: widget.business,
+                      month: calendarMonth,
+                      selected: DateTime.parse(selectedDate),
+                      overview: true,
+                    ),
                   Offstage(
                     offstage: !calendarHome,
                     child: SizedBox(
@@ -397,7 +408,8 @@ class _RecordPageState extends State<RecordPage> {
                       child: RecordCalendar(
                         key: ValueKey(calendarRevision),
                         initialMonth: calendarMonth,
-                        onMonthChanged: (month) => calendarMonth = month,
+                        onMonthChanged: (month) =>
+                            setState(() => calendarMonth = month),
                         selected: DateTime.parse(selectedDate),
                         today: DateTime.parse(widget.business.today),
                         counts: counts,
@@ -424,6 +436,12 @@ class _RecordPageState extends State<RecordPage> {
                       child: const Text('记录今天'),
                     ),
                   ],
+                  if (calendarHome)
+                    HomeStatistics(
+                      business: widget.business,
+                      month: calendarMonth,
+                      selected: DateTime.parse(selectedDate),
+                    ),
                   if (!calendarHome) ...[
                     const SizedBox(height: 24),
                     Text(
@@ -717,6 +735,8 @@ class _RecordCalendarState extends State<RecordCalendar> {
         Expanded(
           child: GridView.count(
             crossAxisCount: 7,
+            mainAxisExtent: 42,
+            physics: const NeverScrollableScrollPhysics(),
             children: [
               for (var index = 0; index < offset + days; index++)
                 if (index < offset)
@@ -767,6 +787,173 @@ class _RecordCalendarState extends State<RecordCalendar> {
           child: const Text('返回今天'),
         ),
       ],
+    );
+  }
+}
+
+class HomeStatistics extends StatefulWidget {
+  const HomeStatistics({
+    super.key,
+    required this.business,
+    required this.month,
+    required this.selected,
+    this.overview = false,
+  });
+  final Business business;
+  final DateTime month;
+  final DateTime selected;
+  final bool overview;
+  @override
+  State<HomeStatistics> createState() => _HomeStatisticsState();
+}
+
+class _HomeStatisticsState extends State<HomeStatistics> {
+  bool weekly = false;
+  late DateTime week = monday(widget.selected);
+  DateTime monday(DateTime date) =>
+      DateTime(date.year, date.month, date.day - date.weekday + 1);
+  @override
+  void didUpdateWidget(HomeStatistics oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selected != widget.selected) week = monday(widget.selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final start = weekly
+        ? week
+        : DateTime(widget.month.year, widget.month.month);
+    final end = weekly
+        ? DateTime(week.year, week.month, week.day + 6)
+        : DateTime(widget.month.year, widget.month.month + 1, 0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!widget.overview) ...[
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: true, label: Text('周')),
+              ButtonSegment(value: false, label: Text('月')),
+            ],
+            selected: {weekly},
+            onSelectionChanged: (value) =>
+                setState(() => weekly = value.single),
+          ),
+          if (weekly)
+            Row(
+              children: [
+                IconButton(
+                  tooltip: '前一周',
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: () => setState(
+                    () => week = DateTime(week.year, week.month, week.day - 7),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    '${Business.formatDate(start)} ～ ${Business.formatDate(end)}',
+                  ),
+                ),
+                IconButton(
+                  tooltip: '后一周',
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: () => setState(
+                    () => week = DateTime(week.year, week.month, week.day + 7),
+                  ),
+                ),
+              ],
+            ),
+        ],
+        FutureBuilder<PeriodStatistics>(
+          key: ValueKey('$start-$end'),
+          future: widget.business.statistics(start, end),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) return const Text('统计读取失败');
+            final data = snapshot.data;
+            if (data == null) return const Text('正在读取统计…');
+            if (widget.overview) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  '${widget.month.year}年${widget.month.month}月概览\n排便总次数 ${data.total} · 已排便 ${data.recordedDays}天\n确认未排便 ${data.confirmedDays}天 · 尚未填写 ${data.unfilledDays}天',
+                ),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                distribution('排便通畅度分布', data.ease, data.total),
+                distribution('排便量分布', data.amount, data.total),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget distribution(String title, Map<String, int> values, int total) {
+    final maximum = values.values.fold<int>(1, (a, b) => a > b ? a : b);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          if (total == 0)
+            const Text('暂无排便记录')
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: values.entries.map((entry) {
+                  final label = title == '排便量分布' && entry.key != '旧版未分类'
+                      ? '💩 × ${entry.key}'
+                      : entry.key;
+                  final detail =
+                      '${entry.value}次 · ${(entry.value / total * 100).toStringAsFixed(1)}%';
+                  return Semantics(
+                    label: '$label，$detail',
+                    button: true,
+                    child: InkWell(
+                      onTap: () => showDialog<void>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text(label),
+                          content: Text(detail),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('关闭'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      child: SizedBox(
+                        width: 100,
+                        height: 170,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text('${entry.value}次'),
+                            Container(
+                              width: 32,
+                              height: 110 * entry.value / maximum,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(label),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

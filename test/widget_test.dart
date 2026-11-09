@@ -18,6 +18,42 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('首页周月共享切换、空状态与柱子次数占比', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(
+        inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+        now: () => DateTime(2026, 11, 9, 12),
+      ),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() async {
+      await app.createProfile('13800138000');
+      await app.saveToday('顺畅', '9');
+    });
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('排便量分布'));
+    await tester.ensureVisible(find.text('💩 × 9'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('💩 × 9'));
+    await tester.pumpAndSettle();
+    expect(find.text('1次 · 100.0%'), findsOneWidget);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('周'));
+    await tester.tap(find.text('周'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('2026-11-09 ～ 2026-11-15'));
+    await tester.tap(find.byTooltip('前一周'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('暂无排便记录').first);
+    expect(find.text('暂无排便记录'), findsNWidgets(2));
+  });
+
   testWidgets('档案选择器与删除确认，最后档案删除后建档', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
