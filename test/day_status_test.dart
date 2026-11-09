@@ -3,9 +3,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:poop_today/business.dart';
 
 void main() {
-  test('事务失败回滚且撤销过期后保持删除标记', () async {
+  test('确认未排便事务失败回滚', () async {
     sqfliteFfiInit();
-    var clock = DateTime(2026, 11, 9, 12);
+    final clock = DateTime(2026, 11, 9, 12);
     final app = await Business.open(
       inMemoryDatabasePath,
       factory: databaseFactoryFfi,
@@ -28,16 +28,10 @@ void main() {
     await db.execute('DROP TRIGGER fail_confirmation');
     await app.deleteRecord(id);
     await app.confirmNoPoop(app.today);
-    await db.execute("CREATE TRIGGER fail_restore BEFORE UPDATE ON records WHEN NEW.deleted = 0 BEGIN SELECT RAISE(ABORT, '注入恢复失败'); END");
-    await expectLater(app.undoDelete(id, clearConfirmation: true), throwsA(anything));
     expect(await app.dailyCounts(), {'2026-11-09': 0});
     expect(await app.todayRecords(), isEmpty);
-    await db.execute('DROP TRIGGER fail_restore');
-    clock = clock.add(Business.undoDuration);
-    await expectLater(app.undoDelete(id), throwsStateError);
-    expect(await app.todayRecords(), isEmpty);
   });
-  test('确认、移入、删除和撤销保持日期互斥', () async {
+  test('确认、移入、删除和新增保持日期互斥', () async {
     sqfliteFfiInit();
     final app = await Business.open(
       inMemoryDatabasePath,
@@ -56,8 +50,7 @@ void main() {
     await app.deleteRecord(id);
     expect(await app.dailyCounts(), isEmpty);
     await app.confirmNoPoop('2026-11-08');
-    await expectLater(app.undoDelete(id), throwsA(isA<ConfirmationRequired>()));
-    await app.undoDelete(id, clearConfirmation: true);
+    await app.saveRecord(date: '2026-11-08', ease: '顺畅', amount: '3');
     expect(await app.dailyCounts(), {'2026-11-08': 1});
   });
 }

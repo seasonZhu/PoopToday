@@ -216,9 +216,6 @@ class Business {
     );
   }
 
-  static const undoDuration = Duration(seconds: 8);
-  final Map<String, DateTime> _undoDeadlines = {};
-
   Future<void> confirmNoPoop(String date, {bool deleteRecords = false}) async {
     final parsed = DateTime.tryParse(date);
     if (parsed == null ||
@@ -278,47 +275,6 @@ class Business {
         whereArgs: [id],
       );
     });
-    _undoDeadlines[id] = now().add(undoDuration);
-  }
-
-  Future<void> undoDelete(String id, {bool clearConfirmation = false}) async {
-    final deadline = _undoDeadlines[id];
-    if (deadline == null || !now().isBefore(deadline)) {
-      throw StateError('撤销已过期');
-    }
-    await _db.transaction((txn) async {
-      final rows = await txn.query(
-        'records',
-        where: 'id = ? AND deleted = 1',
-        whereArgs: [id],
-      );
-      if (rows.isEmpty) throw StateError('记录不存在');
-      final record = rows.first;
-      final confirmations = await txn.query(
-        'no_poop',
-        where: 'profile_id = ? AND date = ?',
-        whereArgs: [record['profile_id'], record['date']],
-      );
-      if (confirmations.isNotEmpty && !clearConfirmation) {
-        throw ConfirmationRequired();
-      }
-      await txn.delete(
-        'no_poop',
-        where: 'profile_id = ? AND date = ?',
-        whereArgs: [record['profile_id'], record['date']],
-      );
-      await txn.update(
-        'records',
-        {
-          'deleted': 0,
-          'version': (record['version'] as int) + 1,
-          'modified_at': now().toUtc().toIso8601String(),
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    });
-    _undoDeadlines.remove(id);
   }
 
   Future<void> close() => _db.close();

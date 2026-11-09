@@ -56,7 +56,7 @@ void main() {
     expect(find.text('新增选项'), findsNothing);
   });
 
-  testWidgets('确认未排便可取消，删除后可撤销', (tester) async {
+  testWidgets('确认未排便可取消，点击与完整侧滑直接删除', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
       () => Business.open(
@@ -85,11 +85,34 @@ void main() {
     await tester.ensureVisible(find.byTooltip('删除记录'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('删除记录'));
-    await waitFor(tester, find.text('撤销'));
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text('撤销'));
-    await waitFor(tester, find.byTooltip('删除记录'));
-    expect((await tester.runAsync(app.todayRecords))!.length, 1);
+    await waitFor(tester, find.text('尚未填写'));
+    expect(find.text('撤销'), findsNothing);
+    await tester.runAsync(() => app.saveToday('顺畅', '3'));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.text('记录今天'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('确认当天未排便'));
+    await tester.scrollUntilVisible(
+      find.byType(Dismissible),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.byType(Dismissible));
+    await tester.ensureVisible(find.byType(Dismissible));
+    await tester.drag(find.byType(Dismissible), const Offset(-800, 0));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('尚未填写'));
+    expect((await tester.runAsync(app.todayRecords))!, isEmpty);
+    await tester.runAsync(() => app.saveToday('顺畅', '3'));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.text('记录今天'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('确认当天未排便'));
     await tester.ensureVisible(find.text('确认当天未排便'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认当天未排便'));

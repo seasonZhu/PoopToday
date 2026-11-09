@@ -220,30 +220,6 @@ class _RecordPageState extends State<RecordPage> {
     try {
       await widget.business.deleteRecord(id);
       await refresh();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).removeCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('记录已删除，8 秒内可撤销'),
-          duration: Business.undoDuration,
-          action: SnackBarAction(
-            label: '撤销',
-            onPressed: () async {
-              try {
-                try {
-                  await widget.business.undoDelete(id);
-                } on ConfirmationRequired {
-                  if (!mounted || !await confirm('恢复记录将解除当天未排便确认，继续？')) return;
-                  await widget.business.undoDelete(id, clearConfirmation: true);
-                }
-                await refresh();
-              } catch (_) {
-                if (mounted) setState(() => error = '撤销失败或已过期');
-              }
-            },
-          ),
-        ),
-      );
     } catch (_) {
       if (mounted) setState(() => error = '删除失败，请重试');
     } finally {
@@ -512,44 +488,54 @@ class _RecordPageState extends State<RecordPage> {
                       child: Text(counts[selectedDate] == 0 ? '确认未排便' : '尚未填写'),
                     ),
                   ...records.map(
-                    (record) => Card(
-                      child: ListTile(
-                        title: Text(
-                          "${record['ease_name']} · ${record['amount_value'] == null ? record['amount_name'] : '💩 × ${record['amount_value']}'}",
-                        ),
-                        trailing: IconButton(
-                          tooltip: '删除记录',
-                          onPressed: saving
+                    (record) => Dismissible(
+                      key: ValueKey(record['id']),
+                      direction: saving
+                          ? DismissDirection.none
+                          : DismissDirection.endToStart,
+                      confirmDismiss: (_) async {
+                        await deleteRecord(record['id'] as String);
+                        return false;
+                      },
+                      child: Card(
+                        child: ListTile(
+                          title: Text(
+                            "${record['ease_name']} · ${record['amount_value'] == null ? record['amount_name'] : '💩 × ${record['amount_value']}'}",
+                          ),
+                          trailing: IconButton(
+                            tooltip: '删除记录',
+                            onPressed: saving
+                                ? null
+                                : () => deleteRecord(record['id'] as String),
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                          subtitle: Text(
+                            '${record['date']} ${record['local_time'] ?? '未填写时间'}',
+                          ),
+                          onTap: saving
                               ? null
-                              : () => deleteRecord(record['id'] as String),
-                          icon: const Icon(Icons.delete_outline),
+                              : () async {
+                                  if (!await discard() || !mounted) return;
+                                  setState(() {
+                                    editing = record;
+                                    ease =
+                                        Business.easeOptions.contains(
+                                          record['ease_name'],
+                                        )
+                                        ? record['ease_name'] as String
+                                        : null;
+                                    amount = record['amount_value']?.toString();
+                                    amountController.text =
+                                        amount != null &&
+                                            !Business.amountOptions.contains(
+                                              amount,
+                                            )
+                                        ? amount!
+                                        : '';
+                                    localTime = record['local_time'] as String?;
+                                  });
+                                },
                         ),
-                        subtitle: Text(
-                          '${record['date']} ${record['local_time'] ?? '未填写时间'}',
-                        ),
-                        onTap: saving
-                            ? null
-                            : () async {
-                                if (!await discard() || !mounted) return;
-                                setState(() {
-                                  editing = record;
-                                  ease =
-                                      Business.easeOptions.contains(
-                                        record['ease_name'],
-                                      )
-                                      ? record['ease_name'] as String
-                                      : null;
-                                  amount = record['amount_value']?.toString();
-                                  amountController.text =
-                                      amount != null &&
-                                          !Business.amountOptions.contains(
-                                            amount,
-                                          )
-                                      ? amount!
-                                      : '';
-                                  localTime = record['local_time'] as String?;
-                                });
-                              },
                       ),
                     ),
                   ),
