@@ -25,3 +25,15 @@ Blocked by: 无，可立即开始
 
 - 2026-11-09，用户确认拆分及阻塞关系，发布到本地任务跟踪器。
 
+
+## 实施与验证记录
+
+- 2026-11-09，完成首次建档、今天记录填写和展示，SQLite 持久化，稳定 UUID、选项名称快照、版本与删除状态字段。
+- Flutter 3.47.0 / Dart 3.13.0，sqflite 数据库版本 1，事务写入，后续结构升级需增加显式迁移。状态管理使用 StatefulWidget。Android 最低 API 24，应用标识 `com.pooptoday.poop_today`。
+- 全量 `flutter test --timeout 45s` 通过，共 2 项，覆盖实际临时数据库重新打开、手机号与两维度必填校验、页面创建与保存。`flutter analyze` 通过，无问题。
+- Android Manifest 关闭备份，数据提取规则排除云备份及设备迁移。真实设备重启、离线和系统迁移行为尚未验证。
+- Android Debug 构建仍在运行，Gradle 首次下载依赖耗时较长，尚未确认成功。
+- 用户追加 iOS 自测需求，已补齐 iOS 工程，`flutter build ios --debug --no-codesign` 通过，签名构建继续检查。
+- 已完成规范与规格双轴审查，修正页面测试固定等待和模板文档问题。首次业务测试受原生库下载阻塞，未在实现前确认红灯，本轮未完整遵守 TDD 红绿顺序。
+- 当前目录原无 Git 仓库，按 implement 提交要求初始化，原有需求文档随初始提交纳入版本管理。
+- iOS 签名 Debug 构建通过，沿用本机已有团队 `B6Q5RKSB5N`，产物 `build/ios/iphoneos/Runner.app`。尚未安装或运行设备。

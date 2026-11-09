@@ -9,10 +9,14 @@ void main() {
     sqfliteFfiInit();
     final directory = await Directory.systemTemp.createTemp('poop_today');
     final path = '${directory.path}/test.db';
-    final now = () => DateTime(2026, 11, 9, 12);
+    DateTime now() => DateTime(2026, 11, 9, 12);
     var app = await Business.open(path, factory: databaseFactoryFfi, now: now);
     try {
+      await expectLater(app.createProfile('123'), throwsArgumentError);
       await app.createProfile('13800138000');
+      await expectLater(app.saveToday(null, '中'), throwsArgumentError);
+      await expectLater(app.saveToday('顺畅', null), throwsArgumentError);
+      expect(await app.todayRecords(), isEmpty);
       await app.saveToday('顺畅', '中');
       await app.close();
       app = await Business.open(path, factory: databaseFactoryFfi, now: now);

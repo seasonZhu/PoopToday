@@ -65,11 +65,12 @@ class _RecordPageState extends State<RecordPage> {
         loading = false;
       });
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           error = '读取失败，请重试';
           loading = false;
         });
+      }
     }
   }
 
