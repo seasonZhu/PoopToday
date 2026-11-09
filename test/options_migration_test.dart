@@ -78,8 +78,8 @@ void main() {
         await app.close();
         app = await Business.open(path, factory: databaseFactoryFfi);
         final rows = await app.recordsForDate('2026-11-08');
-        expect(rows.map((r) => r['id']), ['少', '中', '多', '一小点']);
-        expect(rows.map((r) => r['amount_value']), [1, 3, 5, null]);
+        expect(rows.map((r) => r['id']), ['一小点', '多', '中', '少']);
+        expect(rows.map((r) => r['amount_value']), [null, 5, 3, 1]);
         // 通过原始数据库验证迁移未丢失公开读取接口隐藏的删除记录。
         final upgraded = await databaseFactoryFfi.openDatabase(path);
         for (final old in before) {

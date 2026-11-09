@@ -30,7 +30,11 @@ class PoopTodayApp extends StatelessWidget {
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     supportedLocales: const [Locale('zh', 'CN')],
     title: '今天排便了吗',
-    theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
+    theme: ThemeData(
+      colorSchemeSeed: Colors.teal,
+      scaffoldBackgroundColor: const Color(0xFFFFFCF5),
+      useMaterial3: true,
+    ),
     home: RecordPage(business: business),
   );
 }
@@ -46,11 +50,18 @@ class _RecordPageState extends State<RecordPage> {
   final phoneController = TextEditingController();
   final amountController = TextEditingController();
   late String selectedDate = widget.business.today;
+  DateTime? calendarMonth;
   Map<String, int> counts = {};
   Map<String, Object?>? editing;
   String? localTime;
   bool get dirty =>
-      ease != null || amount != null || editing != null || localTime != null;
+      (ease != null && ease != editing?['ease_name']) ||
+      (amount != null &&
+          amount !=
+              (editing?['amount_value'] ?? editing?['amount_name'])
+                  ?.toString()) ||
+      localTime != editing?['local_time'] ||
+      (editing != null && selectedDate != editing?['date']);
 
   Future<bool> discard() async {
     if (!dirty) return true;
@@ -249,7 +260,7 @@ class _RecordPageState extends State<RecordPage> {
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !dirty,
+    canPop: calendarHome && !dirty,
     onPopInvokedWithResult: (didPop, result) async {
       if (didPop) return;
       if (await discard() && mounted) {
@@ -259,14 +270,36 @@ class _RecordPageState extends State<RecordPage> {
           amountController.clear();
           editing = null;
           localTime = null;
+          calendarHome = true;
         });
       }
     },
     child: Scaffold(
-      appBar: AppBar(title: const Text('今天排便了吗')),
+      appBar: AppBar(
+        title: const Text('今天排便了吗', style: TextStyle(fontSize: 20)),
+        leading: calendarHome
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: saving
+                    ? null
+                    : () async {
+                        if (!await discard() || !mounted) return;
+                        setState(() {
+                          calendarHome = true;
+                          editing = null;
+                          ease = null;
+                          amount = null;
+                          localTime = null;
+                          amountController.clear();
+                        });
+                      },
+              ),
+      ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
+              key: PageStorageKey(calendarHome),
               padding: const EdgeInsets.all(24),
               children: [
                 if (phone == null) ...[
@@ -280,10 +313,13 @@ class _RecordPageState extends State<RecordPage> {
                   ),
                 ] else ...[
                   Text('本地用户档案 · $phone'),
-                  if (calendarHome) ...[
-                    SizedBox(
+                  Offstage(
+                    offstage: !calendarHome,
+                    child: SizedBox(
                       height: 380,
                       child: RecordCalendar(
+                        initialMonth: calendarMonth,
+                        onMonthChanged: (month) => calendarMonth = month,
                         selected: DateTime.parse(selectedDate),
                         today: DateTime.parse(widget.business.today),
                         counts: counts,
@@ -296,8 +332,17 @@ class _RecordPageState extends State<RecordPage> {
                         },
                       ),
                     ),
+                  ),
+                  if (calendarHome) ...[
+                    const Text('次数表示排便次数 · — 表示未排便 · 留空表示尚未填写'),
                     TextButton(
-                      onPressed: () => setState(() => calendarHome = false),
+                      onPressed: () async {
+                        setState(() {
+                          selectedDate = widget.business.today;
+                          calendarHome = false;
+                        });
+                        await refresh();
+                      },
                       child: const Text('记录今天'),
                     ),
                   ],
@@ -361,7 +406,26 @@ class _RecordPageState extends State<RecordPage> {
                             : () => setState(() => localTime = null),
                         child: const Text('清除时间'),
                       ),
-                    if (editing != null) const Text('正在编辑记录，未重新选择的选项保留原名称'),
+                    if (editing != null) ...[
+                      const Text('正在编辑记录，未重新选择的选项保留原名称'),
+                      TextButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                if (!await discard() || !mounted) return;
+                                setState(() {
+                                  selectedDate = editing!['date'] as String;
+                                  editing = null;
+                                  ease = null;
+                                  amount = null;
+                                  localTime = null;
+                                  amountController.clear();
+                                });
+                                await refresh();
+                              },
+                        child: const Text('取消编辑'),
+                      ),
+                    ],
                     const Text('排便通畅度（必选）'),
                     Wrap(
                       spacing: 8,
@@ -469,9 +533,20 @@ class _RecordPageState extends State<RecordPage> {
                                 if (!await discard() || !mounted) return;
                                 setState(() {
                                   editing = record;
-                                  ease = null;
-                                  amount = null;
-                                  amountController.clear();
+                                  ease =
+                                      Business.easeOptions.contains(
+                                        record['ease_name'],
+                                      )
+                                      ? record['ease_name'] as String
+                                      : null;
+                                  amount = record['amount_value']?.toString();
+                                  amountController.text =
+                                      amount != null &&
+                                          !Business.amountOptions.contains(
+                                            amount,
+                                          )
+                                      ? amount!
+                                      : '';
                                   localTime = record['local_time'] as String?;
                                 });
                               },
@@ -492,7 +567,11 @@ class RecordCalendar extends StatefulWidget {
     required this.today,
     required this.counts,
     this.onSelected,
+    this.initialMonth,
+    this.onMonthChanged,
   });
+  final DateTime? initialMonth;
+  final ValueChanged<DateTime>? onMonthChanged;
   final DateTime selected;
   final DateTime today;
   final Map<String, int> counts;
@@ -502,7 +581,14 @@ class RecordCalendar extends StatefulWidget {
 }
 
 class _RecordCalendarState extends State<RecordCalendar> {
-  late DateTime month = DateTime(widget.selected.year, widget.selected.month);
+  late DateTime month =
+      widget.initialMonth ??
+      DateTime(widget.selected.year, widget.selected.month);
+  void changeMonth(int delta) {
+    setState(() => month = DateTime(month.year, month.month + delta));
+    widget.onMonthChanged?.call(month);
+  }
+
   @override
   Widget build(BuildContext context) {
     final offset = month.weekday - 1;
@@ -515,9 +601,7 @@ class _RecordCalendarState extends State<RecordCalendar> {
               tooltip: '上个月',
               onPressed: month.year == 1 && month.month == 1
                   ? null
-                  : () => setState(
-                      () => month = DateTime(month.year, month.month - 1),
-                    ),
+                  : () => changeMonth(-1),
               icon: const Icon(Icons.chevron_left),
             ),
             Expanded(
@@ -531,9 +615,7 @@ class _RecordCalendarState extends State<RecordCalendar> {
               onPressed:
                   DateTime(month.year, month.month + 1).isAfter(widget.today)
                   ? null
-                  : () => setState(
-                      () => month = DateTime(month.year, month.month + 1),
-                    ),
+                  : () => changeMonth(1),
               icon: const Icon(Icons.chevron_right),
             ),
           ],
@@ -566,12 +648,21 @@ class _RecordCalendarState extends State<RecordCalendar> {
                             : () => widget.onSelected != null
                                   ? widget.onSelected!(date)
                                   : Navigator.pop(context, date),
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          side:
+                              Business.formatDate(date) ==
+                                  Business.formatDate(widget.today)
+                              ? BorderSide(
+                                  color: Theme.of(context).colorScheme.primary,
+                                )
+                              : null,
+                        ),
                         child: Text(
                           '${date.day}${count == null
                               ? ''
                               : count == 0
-                              ? '\n未排便'
+                              ? '\n—'
                               : '\n$count次'}',
                           textAlign: TextAlign.center,
                         ),

@@ -169,9 +169,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('返回今天').first);
     await tester.pumpAndSettle();
-    expect(find.text('放弃未保存的改动？'), findsOneWidget);
-    await tester.tap(find.text('继续编辑'));
-    await tester.pumpAndSettle();
-    expect(find.text('保存修改'), findsOneWidget);
+    expect(find.text('放弃未保存的改动？'), findsNothing);
+    expect(find.text('保存今天的记录'), findsOneWidget);
   });
 }

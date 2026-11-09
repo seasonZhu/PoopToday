@@ -211,7 +211,8 @@ class Business {
       'records',
       where: 'profile_id = ? AND date = ? AND deleted = 0',
       whereArgs: [profiles.first['id'], date],
-      orderBy: 'local_time IS NULL, local_time, created_at, rowid',
+      orderBy:
+          'local_time IS NULL, local_time DESC, created_at DESC, rowid DESC',
     );
   }
 
