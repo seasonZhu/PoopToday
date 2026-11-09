@@ -8,7 +8,7 @@ class Business {
   final Database _db;
   final DateTime Function() now;
   static const easeOptions = ['困难', '一般', '顺畅'];
-  static const amountOptions = ['少', '中', '多'];
+  static const amountOptions = ['1', '3', '5'];
 
   static Future<Business> open(
     String path, {
@@ -18,7 +18,7 @@ class Business {
     final db = await (factory ?? databaseFactory).openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 3,
+        version: 4,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
         },
@@ -30,9 +30,19 @@ class Business {
               'ALTER TABLE records ADD COLUMN utc_offset_minutes INTEGER',
             );
           }
-          await db.execute(
-            'CREATE TABLE no_poop (profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, PRIMARY KEY(profile_id, date))',
-          );
+          if (oldVersion < 3) {
+            await db.execute(
+              'CREATE TABLE no_poop (profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, PRIMARY KEY(profile_id, date))',
+            );
+          }
+          if (oldVersion < 4) {
+            await db.execute(
+              'ALTER TABLE records ADD COLUMN amount_value INTEGER',
+            );
+            await db.execute(
+              "UPDATE records SET amount_value = CASE amount_name WHEN '少' THEN 1 WHEN '中' THEN 3 WHEN '多' THEN 5 END",
+            );
+          }
         },
         onCreate: (db, version) async {
           await db.execute(
@@ -42,7 +52,7 @@ class Business {
             'CREATE TABLE profiles (id TEXT PRIMARY KEY, phone TEXT NOT NULL UNIQUE, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
           );
           await db.execute(
-            'CREATE TABLE records (id TEXT PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, local_time TEXT, time_zone TEXT, utc_offset_minutes INTEGER, ease_id TEXT NOT NULL, ease_name TEXT NOT NULL, amount_id TEXT NOT NULL, amount_name TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
+            'CREATE TABLE records (id TEXT PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, local_time TEXT, time_zone TEXT, utc_offset_minutes INTEGER, ease_id TEXT NOT NULL, ease_name TEXT NOT NULL, amount_id TEXT NOT NULL, amount_name TEXT NOT NULL, amount_value INTEGER, version INTEGER NOT NULL, created_at TEXT NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
           );
         },
       ),
@@ -118,7 +128,7 @@ class Business {
       if ((ease == null && old == null) ||
           (amount == null && old == null) ||
           (ease != null && !easeOptions.contains(ease)) ||
-          (amount != null && !amountOptions.contains(amount))) {
+          (amount != null && !RegExp(r'^[1-9][0-9]?$').hasMatch(amount))) {
         throw ArgumentError('请选择排便通畅度和排便量');
       }
       final timestamp = current.toUtc().toIso8601String();
@@ -137,8 +147,9 @@ class Business {
           'ease_name': ease,
         },
         if (amount != null) ...{
-          'amount_id': 'preset.amount.${amountOptions.indexOf(amount)}',
+          'amount_id': 'numeric.amount.$amount',
           'amount_name': amount,
+          'amount_value': int.parse(amount),
         },
         'version': old == null ? 1 : (old['version'] as int) + 1,
         'modified_at': timestamp,

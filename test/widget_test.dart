@@ -30,17 +30,22 @@ void main() {
     addTearDown(() => tester.runAsync(app.close));
     await tester.runAsync(() async {
       await app.createProfile('13800138000');
-      await app.saveToday('顺畅', '中');
+      await app.saveToday('顺畅', '3');
     });
     await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.text('记录今天'));
+    await tester.pumpAndSettle();
     await waitFor(tester, find.text('确认当天未排便'));
     await tester.ensureVisible(find.text('确认当天未排便'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('确认当天未排便'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect((await tester.runAsync(app.todayRecords))!.length, 1);
     await tester.ensureVisible(find.byTooltip('删除记录'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('删除记录'));
     await waitFor(tester, find.text('撤销'));
     await tester.pump(const Duration(milliseconds: 300));
@@ -48,6 +53,7 @@ void main() {
     await waitFor(tester, find.byTooltip('删除记录'));
     expect((await tester.runAsync(app.todayRecords))!.length, 1);
     await tester.ensureVisible(find.text('确认当天未排便'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('确认当天未排便'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认'));
@@ -75,6 +81,9 @@ void main() {
     await waitFor(tester, find.byType(TextField));
     await tester.enterText(find.byType(TextField), '13800138000');
     await tester.tap(find.text('创建档案'));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.text('记录今天'));
+    await tester.pumpAndSettle();
     await waitFor(tester, find.text('保存今天的记录'));
     expect(
       tester
@@ -83,33 +92,43 @@ void main() {
       isTrue,
     );
     await tester.ensureVisible(find.text('保存今天的记录'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('保存今天的记录'));
     await waitFor(tester, find.text('请选择排便通畅度和排便量'));
-    await tester.tap(find.text('顺畅'));
-    await tester.tap(find.text('中'));
+    await tester.ensureVisible(find.text('😊 顺畅'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('😊 顺畅'));
+    await tester.ensureVisible(find.text('💩 × 3'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('💩 × 3'));
     await tester.ensureVisible(find.text('保存今天的记录'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('保存今天的记录'));
-    await waitFor(tester, find.text('顺畅 · 中'));
-    expect(find.text('顺畅 · 中'), findsOneWidget);
-    await tester.tap(find.text('顺畅 · 中'));
+    await waitFor(tester, find.text('顺畅 · 💩 × 3'));
+    expect(find.text('顺畅 · 💩 × 3'), findsOneWidget);
+    await tester.tap(find.text('顺畅 · 💩 × 3'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('日历补录'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('日历补录'));
     await tester.pumpAndSettle();
     expect(find.text('一'), findsOneWidget);
     await tester.tap(find.text('8'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('保存修改'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('保存修改'));
     await waitFor(tester, find.text('保存记录'));
-    await tester.ensureVisible(find.text('顺畅 · 中'));
+    await tester.ensureVisible(find.text('顺畅 · 💩 × 3'));
+    await tester.pumpAndSettle();
     final historical = await tester.runAsync(
       () => app.recordsForDate('2026-11-08'),
     );
     expect(historical!.single['ease_name'], '顺畅');
-    await tester.tap(find.text('顺畅 · 中'));
+    await tester.tap(find.text('顺畅 · 💩 × 3'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('返回今天').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('返回今天').first);
     await tester.pumpAndSettle();
     expect(find.text('放弃未保存的改动？'), findsOneWidget);

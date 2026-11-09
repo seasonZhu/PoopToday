@@ -13,7 +13,7 @@ void main() {
     );
     addTearDown(app.close);
     await app.createProfile('13800138000');
-    await app.saveToday('顺畅', '中');
+    await app.saveToday('顺畅', '3');
     final id = (await app.todayRecords()).single['id'] as String;
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await db.execute(
@@ -48,7 +48,7 @@ void main() {
     await app.createProfile('13800138000');
     await app.confirmNoPoop('2026-11-08');
     expect((await app.dailyCounts())['2026-11-08'], 0);
-    await app.saveToday('顺畅', '中');
+    await app.saveToday('顺畅', '3');
     final id = (await app.todayRecords()).single['id'] as String;
     await app.saveRecord(id: id, date: '2026-11-08');
     expect(await app.dailyCounts(), {'2026-11-08': 1});

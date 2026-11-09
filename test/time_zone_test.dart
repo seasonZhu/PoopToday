@@ -21,7 +21,7 @@ void main() {
             date: '2026-11-08',
             time: '09:30',
             ease: '一般',
-            amount: '中',
+            amount: '3',
           );
         } else {
           final record = (await app.recordsForDate('2026-11-08')).single;
@@ -32,7 +32,7 @@ void main() {
             id: record['id'] as String,
             date: '2026-11-08',
             time: '09:30',
-            amount: '多',
+            amount: '5',
           );
           final edited = (await app.recordsForDate('2026-11-08')).single;
           expect(edited['utc_offset_minutes'], -300);
