@@ -18,6 +18,44 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('自定义数值仅本次填写，不增加快捷项', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(
+        inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+        now: () => DateTime(2026, 11, 9, 12),
+      ),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() => app.createProfile('13800138000'));
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.text('记录今天'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('😊 顺畅'));
+    await tester.tap(find.text('😊 顺畅'));
+    final input = find.widgetWithText(TextField, '自定义排便量（1～99）');
+    await tester.ensureVisible(input);
+    await tester.enterText(input, '9');
+    await tester.ensureVisible(find.text('保存今天的记录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存今天的记录'));
+    await waitFor(tester, find.text('顺畅 · 💩 × 9'));
+    expect(
+      (await tester.runAsync(app.todayRecords))!.single['amount_value'],
+      9,
+    );
+    expect(tester.widgetList<ChoiceChip>(find.byType(ChoiceChip)).length, 6);
+    expect(
+      tester
+          .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+          .every((chip) => !chip.selected),
+      isTrue,
+    );
+    expect(find.text('新增选项'), findsNothing);
+  });
+
   testWidgets('确认未排便可取消，删除后可撤销', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(

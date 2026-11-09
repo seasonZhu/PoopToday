@@ -10,6 +10,16 @@ class Business {
   static const easeOptions = ['困难', '一般', '顺畅'];
   static const amountOptions = ['1', '3', '5'];
 
+  static String easeCategory(Map<String, Object?> record) {
+    final name = record['ease_name'];
+    return easeOptions.contains(name) ? name as String : '旧版未分类';
+  }
+
+  static String amountCategory(Map<String, Object?> record) {
+    final value = record['amount_value'];
+    return value is int && value >= 1 && value <= 99 ? '$value' : '旧版未分类';
+  }
+
   static Future<Business> open(
     String path, {
     DatabaseFactory? factory,
