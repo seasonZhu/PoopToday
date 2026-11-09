@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -22,6 +23,40 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('导入预览取消不写入，本机变化后再次确认', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(inMemoryDatabasePath, factory: databaseFactoryFfi),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() => app.createProfile('13800138000'));
+    final backup = (await tester.runAsync(app.exportBackup))!;
+    await tester.runAsync(() => app.updatePhone('13900139000'));
+    final original = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = ImportPicker(backup);
+    addTearDown(() => FilePickerPlatform.instance = original);
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.byTooltip('导入备份'));
+    await waitFor(tester, find.textContaining('导入内容优先'));
+    expect(find.textContaining('覆盖 1'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(await tester.runAsync(app.phone), '13900139000');
+    await tester.tap(find.byTooltip('导入备份'));
+    await waitFor(tester, find.textContaining('导入内容优先'));
+    await tester.runAsync(() => app.updatePhone('13700137000'));
+    await tester.tap(find.text('确认'));
+    await waitFor(tester, find.textContaining('导入内容优先'));
+    expect(await tester.runAsync(app.phone), '13700137000');
+    await tester.tap(find.text('确认'));
+    await waitFor(tester, find.text('13800138000'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('导出先提示敏感数据，取消后保留档案', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
@@ -327,4 +362,33 @@ class FailingSavePicker extends FilePickerPlatform {
     called = true;
     throw StateError('保存失败');
   }
+}
+
+class ImportPicker extends FilePickerPlatform {
+  ImportPicker(this.source);
+  final String source;
+  @override
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async => ImportFile(source);
+}
+
+final class ImportFile extends PlatformFile {
+  ImportFile(this.source);
+  final String source;
+  @override
+  Future<Uint8List> readAsBytes() async =>
+      Uint8List.fromList(utf8.encode(source));
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

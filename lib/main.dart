@@ -77,6 +77,50 @@ class _RecordPageState extends State<RecordPage> {
     }
   }
 
+  bool importing = false;
+
+  Future<void> importBackup() async {
+    if (!await discard()) return;
+    setState(() => importing = true);
+    try {
+      final file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      if (file == null) return;
+      final source = utf8.decode(await file.readAsBytes());
+      while (mounted) {
+        final preview = await widget.business.previewImport(source);
+        if (!await confirm(
+          '导入内容优先，可能覆盖修改或恢复已删除记录。\n新增 ${preview.added}／覆盖 ${preview.overwritten}／恢复 ${preview.restored}／跳过 ${preview.skipped}\n日期清空影响：${preview.cleared} 条记录。是否导入？',
+        )) {
+          return;
+        }
+        try {
+          await widget.business.applyImport(preview);
+          editing = null;
+          ease = null;
+          amount = null;
+          localTime = null;
+          await refresh();
+          return;
+        } on StateError catch (error) {
+          if (!error.message.contains('重新预览')) rethrow;
+          if (!mounted) return;
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(error.message)));
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导入失败：$error')));
+      }
+    } finally {
+      if (mounted) setState(() => importing = false);
+    }
+  }
+
   final phoneController = TextEditingController();
   final amountController = TextEditingController();
   late String selectedDate = widget.business.today;
@@ -384,8 +428,13 @@ class _RecordPageState extends State<RecordPage> {
         title: const Text('今天排便了吗', style: TextStyle(fontSize: 20)),
         actions: [
           IconButton(
+            tooltip: '导入备份',
+            onPressed: importing || exporting ? null : importBackup,
+            icon: const Icon(Icons.file_download_outlined),
+          ),
+          IconButton(
             tooltip: '导出备份',
-            onPressed: exporting ? null : exportBackup,
+            onPressed: exporting || importing ? null : exportBackup,
             icon: const Icon(Icons.file_upload_outlined),
           ),
           if (phone != null)
