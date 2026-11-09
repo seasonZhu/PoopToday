@@ -45,13 +45,39 @@ void main() {
           .every((chip) => !chip.selected),
       isTrue,
     );
+    await tester.ensureVisible(find.text('保存今天的记录'));
     await tester.tap(find.text('保存今天的记录'));
-    await tester.pumpAndSettle();
-    expect(find.text('请选择排便通畅度和排便量'), findsOneWidget);
+    await waitFor(tester, find.text('请选择排便通畅度和排便量'));
     await tester.tap(find.text('顺畅'));
     await tester.tap(find.text('中'));
+    await tester.ensureVisible(find.text('保存今天的记录'));
     await tester.tap(find.text('保存今天的记录'));
     await waitFor(tester, find.text('顺畅 · 中'));
     expect(find.text('顺畅 · 中'), findsOneWidget);
+    await tester.tap(find.text('顺畅 · 中'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('日历补录'));
+    await tester.tap(find.text('日历补录'));
+    await tester.pumpAndSettle();
+    expect(find.text('一'), findsOneWidget);
+    await tester.tap(find.text('8'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('保存修改'));
+    await tester.tap(find.text('保存修改'));
+    await waitFor(tester, find.text('保存记录'));
+    await tester.ensureVisible(find.text('顺畅 · 中'));
+    final historical = await tester.runAsync(
+      () => app.recordsForDate('2026-11-08'),
+    );
+    expect(historical!.single['ease_name'], '顺畅');
+    await tester.tap(find.text('顺畅 · 中'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('返回今天').first);
+    await tester.tap(find.text('返回今天').first);
+    await tester.pumpAndSettle();
+    expect(find.text('放弃未保存的改动？'), findsOneWidget);
+    await tester.tap(find.text('继续编辑'));
+    await tester.pumpAndSettle();
+    expect(find.text('保存修改'), findsOneWidget);
   });
 }

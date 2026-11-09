@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
@@ -25,6 +26,9 @@ class PoopTodayApp extends StatelessWidget {
   final Business business;
   @override
   Widget build(BuildContext context) => MaterialApp(
+    locale: const Locale('zh', 'CN'),
+    localizationsDelegates: GlobalMaterialLocalizations.delegates,
+    supportedLocales: const [Locale('zh', 'CN')],
     title: '今天排便了吗',
     theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
     home: RecordPage(business: business),
@@ -40,6 +44,58 @@ class RecordPage extends StatefulWidget {
 
 class _RecordPageState extends State<RecordPage> {
   final phoneController = TextEditingController();
+  late String selectedDate = widget.business.today;
+  Map<String, int> counts = {};
+  Map<String, Object?>? editing;
+  String? localTime;
+  bool get dirty =>
+      ease != null || amount != null || editing != null || localTime != null;
+
+  Future<bool> discard() async {
+    if (!dirty) return true;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('放弃未保存的改动？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('继续编辑'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('放弃'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> selectDate() async {
+    final today = DateTime.parse(widget.business.today);
+    final date = await showDialog<DateTime>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择记录日期'),
+        content: SizedBox(
+          width: 340,
+          height: 380,
+          child: RecordCalendar(
+            selected: DateTime.parse(selectedDate),
+            today: today,
+            counts: counts,
+          ),
+        ),
+      ),
+    );
+    if (date == null || !mounted) return;
+    setState(() {
+      selectedDate = Business.formatDate(date);
+    });
+    await refresh();
+  }
+
   String? phone;
   String? ease;
   String? amount;
@@ -57,9 +113,11 @@ class _RecordPageState extends State<RecordPage> {
   Future<void> refresh() async {
     try {
       final currentPhone = await widget.business.phone();
-      final currentRecords = await widget.business.todayRecords();
+      final currentRecords = await widget.business.recordsForDate(selectedDate);
+      final currentCounts = await widget.business.dailyCounts();
       if (!mounted) return;
       setState(() {
+        counts = currentCounts;
         phone = currentPhone;
         records = currentRecords;
         loading = false;
@@ -83,7 +141,15 @@ class _RecordPageState extends State<RecordPage> {
       if (phone == null) {
         await widget.business.createProfile(phoneController.text.trim());
       } else {
-        await widget.business.saveToday(ease, amount);
+        await widget.business.saveRecord(
+          date: selectedDate,
+          id: editing?['id'] as String?,
+          time: localTime,
+          ease: ease,
+          amount: amount,
+        );
+        editing = null;
+        localTime = null;
         ease = null;
         amount = null;
       }
@@ -104,103 +170,284 @@ class _RecordPageState extends State<RecordPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('今天排便了吗')),
-    body: loading
-        ? const Center(child: CircularProgressIndicator())
-        : ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              if (phone == null) ...[
-                const Text('创建本地用户档案', style: TextStyle(fontSize: 24)),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: phoneController,
-                  keyboardType: TextInputType.phone,
-                  maxLength: 11,
-                  decoration: const InputDecoration(labelText: '手机号'),
-                ),
-              ] else ...[
-                Text('本地用户档案 · $phone'),
-                const SizedBox(height: 24),
-                Text(
-                  '今天 ${widget.business.today}',
-                  style: const TextStyle(fontSize: 24),
-                ),
-                const SizedBox(height: 24),
-                const Text('排便通畅度（必选）'),
-                Wrap(
-                  spacing: 8,
-                  children: Business.easeOptions
-                      .map(
-                        (value) => ChoiceChip(
-                          label: Text(value),
-                          selected: ease == value,
-                          onSelected: saving
-                              ? null
-                              : (_) => setState(() => ease = value),
-                        ),
-                      )
-                      .toList(),
-                ),
-                const SizedBox(height: 16),
-                const Text('排便量（必选）'),
-                Wrap(
-                  spacing: 8,
-                  children: Business.amountOptions
-                      .map(
-                        (value) => ChoiceChip(
-                          label: Text(value),
-                          selected: amount == value,
-                          onSelected: saving
-                              ? null
-                              : (_) => setState(() => amount = value),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text(
-                    error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+  Widget build(BuildContext context) => PopScope(
+    canPop: !dirty,
+    onPopInvokedWithResult: (didPop, result) async {
+      if (didPop) return;
+      if (await discard() && mounted) {
+        setState(() {
+          ease = null;
+          amount = null;
+          editing = null;
+          localTime = null;
+        });
+      }
+    },
+    child: Scaffold(
+      appBar: AppBar(title: const Text('今天排便了吗')),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                if (phone == null) ...[
+                  const Text('创建本地用户档案', style: TextStyle(fontSize: 24)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: phoneController,
+                    keyboardType: TextInputType.phone,
+                    maxLength: 11,
+                    decoration: const InputDecoration(labelText: '手机号'),
                   ),
-                ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: saving ? null : save,
-                child: Text(
-                  saving
-                      ? '正在保存…'
-                      : phone == null
-                      ? '创建档案'
-                      : '保存今天的记录',
-                ),
-              ),
-              if (phone != null) ...[
-                const SizedBox(height: 24),
-                Text('今天的记录（${records.length}）'),
-                if (records.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text('尚未填写'),
+                ] else ...[
+                  Text('本地用户档案 · $phone'),
+                  const SizedBox(height: 24),
+                  Text(
+                    '记录日期 $selectedDate',
+                    style: const TextStyle(fontSize: 24),
                   ),
-                ...records.map(
-                  (record) => Card(
-                    child: ListTile(
-                      title: Text(
-                        '${record['ease_name']} · ${record['amount_name']}',
+                  const SizedBox(height: 24),
+                  Wrap(
+                    children: [
+                      TextButton(
+                        onPressed: saving ? null : selectDate,
+                        child: const Text('日历补录'),
                       ),
-                      subtitle: Text(record['date'] as String),
+                      TextButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                if (!await discard() || !mounted) return;
+                                setState(() {
+                                  selectedDate = widget.business.today;
+                                  ease = null;
+                                  amount = null;
+                                  editing = null;
+                                  localTime = null;
+                                });
+                                await refresh();
+                              },
+                        child: const Text('返回今天'),
+                      ),
+                    ],
+                  ),
+                  if (counts.isNotEmpty)
+                    Text(
+                      '每日次数 · ${counts.entries.map((e) => '${e.key} ${e.value}次').join('，')}',
+                    ),
+                  TextButton(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            final time = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.now(),
+                            );
+                            if (time != null && mounted) {
+                              setState(
+                                () => localTime =
+                                    '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+                              );
+                            }
+                          },
+                    child: Text(localTime ?? '具体时间（选填）'),
+                  ),
+                  if (localTime != null)
+                    TextButton(
+                      onPressed: saving
+                          ? null
+                          : () => setState(() => localTime = null),
+                      child: const Text('清除时间'),
+                    ),
+                  if (editing != null) const Text('正在编辑记录，未重新选择的选项保留原名称'),
+                  const Text('排便通畅度（必选）'),
+                  Wrap(
+                    spacing: 8,
+                    children: Business.easeOptions
+                        .map(
+                          (value) => ChoiceChip(
+                            label: Text(value),
+                            selected: ease == value,
+                            onSelected: saving
+                                ? null
+                                : (_) => setState(() => ease = value),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('排便量（必选）'),
+                  Wrap(
+                    spacing: 8,
+                    children: Business.amountOptions
+                        .map(
+                          (value) => ChoiceChip(
+                            label: Text(value),
+                            selected: amount == value,
+                            onSelected: saving
+                                ? null
+                                : (_) => setState(() => amount = value),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                     ),
                   ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: saving ? null : save,
+                  child: Text(
+                    saving
+                        ? '正在保存…'
+                        : phone == null
+                        ? '创建档案'
+                        : editing != null
+                        ? '保存修改'
+                        : selectedDate == widget.business.today
+                        ? '保存今天的记录'
+                        : '保存记录',
+                  ),
                 ),
+                if (phone != null) ...[
+                  const SizedBox(height: 24),
+                  Text('所选日期的记录（${records.length}）'),
+                  if (records.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('尚未填写'),
+                    ),
+                  ...records.map(
+                    (record) => Card(
+                      child: ListTile(
+                        title: Text(
+                          '${record['ease_name']} · ${record['amount_name']}',
+                        ),
+                        subtitle: Text(
+                          '${record['date']} ${record['local_time'] ?? '未填写时间'}',
+                        ),
+                        onTap: saving
+                            ? null
+                            : () async {
+                                if (!await discard() || !mounted) return;
+                                setState(() {
+                                  editing = record;
+                                  ease = null;
+                                  amount = null;
+                                  localTime = record['local_time'] as String?;
+                                });
+                              },
+                      ),
+                    ),
+                  ),
+                ],
               ],
+            ),
+    ),
+  );
+}
+
+class RecordCalendar extends StatefulWidget {
+  const RecordCalendar({
+    super.key,
+    required this.selected,
+    required this.today,
+    required this.counts,
+  });
+  final DateTime selected;
+  final DateTime today;
+  final Map<String, int> counts;
+  @override
+  State<RecordCalendar> createState() => _RecordCalendarState();
+}
+
+class _RecordCalendarState extends State<RecordCalendar> {
+  late DateTime month = DateTime(widget.selected.year, widget.selected.month);
+  @override
+  Widget build(BuildContext context) {
+    final offset = month.weekday - 1;
+    final days = DateTime(month.year, month.month + 1, 0).day;
+    return Column(
+      children: [
+        Row(
+          children: [
+            IconButton(
+              tooltip: '上个月',
+              onPressed: month.year == 1 && month.month == 1
+                  ? null
+                  : () => setState(
+                      () => month = DateTime(month.year, month.month - 1),
+                    ),
+              icon: const Icon(Icons.chevron_left),
+            ),
+            Expanded(
+              child: Text(
+                '${month.year}年${month.month}月',
+                textAlign: TextAlign.center,
+              ),
+            ),
+            IconButton(
+              tooltip: '下个月',
+              onPressed:
+                  DateTime(month.year, month.month + 1).isAfter(widget.today)
+                  ? null
+                  : () => setState(
+                      () => month = DateTime(month.year, month.month + 1),
+                    ),
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            for (final day in ['一', '二', '三', '四', '五', '六', '日'])
+              Expanded(child: Center(child: Text(day))),
+          ],
+        ),
+        Expanded(
+          child: GridView.count(
+            crossAxisCount: 7,
+            children: [
+              for (var index = 0; index < offset + days; index++)
+                if (index < offset)
+                  const SizedBox()
+                else
+                  Builder(
+                    builder: (context) {
+                      final date = DateTime(
+                        month.year,
+                        month.month,
+                        index - offset + 1,
+                      );
+                      final count = widget.counts[Business.formatDate(date)];
+                      return TextButton(
+                        onPressed: date.isAfter(widget.today)
+                            ? null
+                            : () => Navigator.pop(context, date),
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                        child: Text(
+                          '${date.day}${count == null ? '' : '\n$count次'}',
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    },
+                  ),
             ],
           ),
-  );
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, widget.today),
+          child: const Text('返回今天'),
+        ),
+      ],
+    );
+  }
 }
