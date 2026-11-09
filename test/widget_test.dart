@@ -1,6 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:poop_today/business.dart';
@@ -18,6 +22,49 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('导出先提示敏感数据，取消后保留档案', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(inMemoryDatabasePath, factory: databaseFactoryFfi),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() => app.createProfile('13800138000'));
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.byTooltip('导出备份'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('未加密'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(await tester.runAsync(app.phone), '13800138000');
+  });
+
+  testWidgets('保存文件失败后业务数据保持不变', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(
+        inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+        now: () => DateTime(2026, 11, 9),
+      ),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() => app.createProfile('13800138000'));
+    final before = await tester.runAsync(app.exportBackup);
+    final original = FilePickerPlatform.instance;
+    final picker = FailingSavePicker();
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = original);
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.byTooltip('导出备份'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认'));
+    await waitFor(tester, find.text('导出失败，请重试'));
+    expect(picker.called, isTrue);
+    expect(await tester.runAsync(app.exportBackup), before);
+  });
+
   testWidgets('首页周月共享切换、空状态与柱子次数占比', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
@@ -261,4 +308,23 @@ void main() {
     expect(find.text('放弃未保存的改动？'), findsNothing);
     expect(find.text('保存今天的记录'), findsOneWidget);
   });
+}
+
+class FailingSavePicker extends FilePickerPlatform {
+  bool called = false;
+  @override
+  Future<Uri?> saveFile({
+    required String fileName,
+    required Uint8List bytes,
+    required String mimeType,
+    String? dialogTitle,
+    String? initialDirectory,
+    Function(FilePickerStatus)? onFileSaving,
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    called = true;
+    throw StateError('保存失败');
+  }
 }

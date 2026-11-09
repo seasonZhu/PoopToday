@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path/path.dart' as path;
@@ -47,6 +51,32 @@ class RecordPage extends StatefulWidget {
 }
 
 class _RecordPageState extends State<RecordPage> {
+  bool exporting = false;
+
+  Future<void> exportBackup() async {
+    setState(() => exporting = true);
+    try {
+      if (!await confirm('备份未加密，包含手机号及排便数据，请妥善保管。是否继续保存？')) return;
+      final data = await widget.business.exportBackup();
+      final result = await FilePicker.saveFile(
+        fileName: 'poop-today-${widget.business.today}.json',
+        bytes: Uint8List.fromList(utf8.encode(data)),
+        mimeType: 'application/json',
+      );
+      if (mounted && result != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('备份已保存')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('导出失败，请重试')));
+      }
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
+
   final phoneController = TextEditingController();
   final amountController = TextEditingController();
   late String selectedDate = widget.business.today;
@@ -353,6 +383,11 @@ class _RecordPageState extends State<RecordPage> {
       appBar: AppBar(
         title: const Text('今天排便了吗', style: TextStyle(fontSize: 20)),
         actions: [
+          IconButton(
+            tooltip: '导出备份',
+            onPressed: exporting ? null : exportBackup,
+            icon: const Icon(Icons.file_upload_outlined),
+          ),
           if (phone != null)
             TextButton(
               onPressed: saving ? null : manageProfiles,

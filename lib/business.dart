@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
@@ -424,6 +426,35 @@ class Business {
       );
     });
   }
+
+  Future<String> exportBackup() => _db.transaction((txn) async {
+    final profiles = await txn.query('profiles', orderBy: 'rowid');
+    final records = await txn.rawQuery(
+      'SELECT records.* FROM records JOIN profiles ON records.profile_id = profiles.id WHERE profiles.deleted = 0 ORDER BY records.rowid',
+    );
+    final confirmations = await txn.rawQuery(
+      'SELECT no_poop.* FROM no_poop JOIN profiles ON no_poop.profile_id = profiles.id WHERE profiles.deleted = 0 ORDER BY no_poop.rowid',
+    );
+    final current = now();
+    return jsonEncode({
+      'format_version': 1,
+      'exported_at': current.toUtc().toIso8601String(),
+      'time_zone': current.timeZoneName,
+      'utc_offset_minutes': current.timeZoneOffset.inMinutes,
+      'profiles': [
+        for (final profile in profiles)
+          if (profile['deleted'] == 0)
+            profile
+          else
+            {
+              for (final key in ['id', 'version', 'modified_at', 'deleted'])
+                key: profile[key],
+            },
+      ],
+      'records': records,
+      'no_poop': confirmations,
+    });
+  });
 
   Future<void> close() => _db.close();
 }
