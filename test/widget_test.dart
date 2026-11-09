@@ -18,6 +18,43 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('确认未排便可取消，删除后可撤销', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(
+        inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+        now: () => DateTime(2026, 11, 9, 12),
+      ),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() async {
+      await app.createProfile('13800138000');
+      await app.saveToday('顺畅', '中');
+    });
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('确认当天未排便'));
+    await tester.ensureVisible(find.text('确认当天未排便'));
+    await tester.tap(find.text('确认当天未排便'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect((await tester.runAsync(app.todayRecords))!.length, 1);
+    await tester.ensureVisible(find.byTooltip('删除记录'));
+    await tester.tap(find.byTooltip('删除记录'));
+    await waitFor(tester, find.text('撤销'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('撤销'));
+    await waitFor(tester, find.byTooltip('删除记录'));
+    expect((await tester.runAsync(app.todayRecords))!.length, 1);
+    await tester.ensureVisible(find.text('确认当天未排便'));
+    await tester.tap(find.text('确认当天未排便'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认'));
+    await waitFor(tester, find.text('确认未排便'));
+    expect((await tester.runAsync(app.todayRecords))!, isEmpty);
+  });
+
   testWidgets('创建档案后两项无预选，必选校验后保存并展示', (tester) async {
     sqfliteFfiInit();
     final dir = (await tester.runAsync(

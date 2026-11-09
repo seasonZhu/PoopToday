@@ -163,6 +163,79 @@ class _RecordPageState extends State<RecordPage> {
     }
   }
 
+  Future<bool> confirm(String title) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(title),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确认'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+
+  Future<void> confirmDay() async {
+    final hasRecords = (counts[selectedDate] ?? 0) > 0;
+    if (hasRecords && !await confirm('删除当天记录并确认未排便？')) return;
+    if (!mounted) return;
+    setState(() => saving = true);
+    try {
+      await widget.business.confirmNoPoop(
+        selectedDate,
+        deleteRecords: hasRecords,
+      );
+      await refresh();
+    } catch (_) {
+      if (mounted) setState(() => error = '操作失败，请重试');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> deleteRecord(String id) async {
+    setState(() => saving = true);
+    try {
+      await widget.business.deleteRecord(id);
+      await refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).removeCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('记录已删除，8 秒内可撤销'),
+          duration: Business.undoDuration,
+          action: SnackBarAction(
+            label: '撤销',
+            onPressed: () async {
+              try {
+                try {
+                  await widget.business.undoDelete(id);
+                } on ConfirmationRequired {
+                  if (!mounted || !await confirm('恢复记录将解除当天未排便确认，继续？')) return;
+                  await widget.business.undoDelete(id, clearConfirmation: true);
+                }
+                await refresh();
+              } catch (_) {
+                if (mounted) setState(() => error = '撤销失败或已过期');
+              }
+            },
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) setState(() => error = '删除失败，请重试');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
   @override
   void dispose() {
     phoneController.dispose();
@@ -319,17 +392,28 @@ class _RecordPageState extends State<RecordPage> {
                 ),
                 if (phone != null) ...[
                   const SizedBox(height: 24),
+                  TextButton(
+                    onPressed: saving ? null : confirmDay,
+                    child: const Text('确认当天未排便'),
+                  ),
                   Text('所选日期的记录（${records.length}）'),
                   if (records.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text('尚未填写'),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(counts[selectedDate] == 0 ? '确认未排便' : '尚未填写'),
                     ),
                   ...records.map(
                     (record) => Card(
                       child: ListTile(
                         title: Text(
                           '${record['ease_name']} · ${record['amount_name']}',
+                        ),
+                        trailing: IconButton(
+                          tooltip: '删除记录',
+                          onPressed: saving
+                              ? null
+                              : () => deleteRecord(record['id'] as String),
+                          icon: const Icon(Icons.delete_outline),
                         ),
                         subtitle: Text(
                           '${record['date']} ${record['local_time'] ?? '未填写时间'}',
@@ -434,7 +518,11 @@ class _RecordCalendarState extends State<RecordCalendar> {
                             : () => Navigator.pop(context, date),
                         style: TextButton.styleFrom(padding: EdgeInsets.zero),
                         child: Text(
-                          '${date.day}${count == null ? '' : '\n$count次'}',
+                          '${date.day}${count == null
+                              ? ''
+                              : count == 0
+                              ? '\n未排便'
+                              : '\n$count次'}',
                           textAlign: TextAlign.center,
                         ),
                       );

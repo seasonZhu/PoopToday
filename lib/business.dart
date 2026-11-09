@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+class ConfirmationRequired implements Exception {}
+
 class Business {
   Business._(this._db, this.now);
   final Database _db;
@@ -16,18 +18,26 @@ class Business {
     final db = await (factory ?? databaseFactory).openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
         },
         onUpgrade: (db, oldVersion, newVersion) async {
-          await db.execute('ALTER TABLE records ADD COLUMN local_time TEXT');
-          await db.execute('ALTER TABLE records ADD COLUMN time_zone TEXT');
+          if (oldVersion < 2) {
+            await db.execute('ALTER TABLE records ADD COLUMN local_time TEXT');
+            await db.execute('ALTER TABLE records ADD COLUMN time_zone TEXT');
+            await db.execute(
+              'ALTER TABLE records ADD COLUMN utc_offset_minutes INTEGER',
+            );
+          }
           await db.execute(
-            'ALTER TABLE records ADD COLUMN utc_offset_minutes INTEGER',
+            'CREATE TABLE no_poop (profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, PRIMARY KEY(profile_id, date))',
           );
         },
         onCreate: (db, version) async {
+          await db.execute(
+            'CREATE TABLE no_poop (profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, PRIMARY KEY(profile_id, date))',
+          );
           await db.execute(
             'CREATE TABLE profiles (id TEXT PRIMARY KEY, phone TEXT NOT NULL UNIQUE, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
           );
@@ -133,6 +143,11 @@ class Business {
         'version': old == null ? 1 : (old['version'] as int) + 1,
         'modified_at': timestamp,
       };
+      await txn.delete(
+        'no_poop',
+        where: 'profile_id = ? AND date = ?',
+        whereArgs: [profiles.first['id'], date],
+      );
       if (id == null) {
         await txn.insert('records', {
           ...values,
@@ -153,7 +168,13 @@ class Business {
     final rows = await _db.rawQuery(
       'SELECT date, COUNT(*) AS count FROM records WHERE deleted = 0 AND profile_id = (SELECT id FROM profiles WHERE deleted = 0 LIMIT 1) GROUP BY date',
     );
-    return {for (final row in rows) row['date'] as String: row['count'] as int};
+    final confirmations = await _db.rawQuery(
+      'SELECT date FROM no_poop WHERE profile_id = (SELECT id FROM profiles WHERE deleted = 0 LIMIT 1)',
+    );
+    return {
+      for (final row in confirmations) row['date'] as String: 0,
+      for (final row in rows) row['date'] as String: row['count'] as int,
+    };
   }
 
   Future<List<Map<String, Object?>>> todayRecords() => recordsForDate(today);
@@ -171,6 +192,111 @@ class Business {
       whereArgs: [profiles.first['id'], date],
       orderBy: 'local_time IS NULL, local_time, created_at, rowid',
     );
+  }
+
+  static const undoDuration = Duration(seconds: 8);
+  final Map<String, DateTime> _undoDeadlines = {};
+
+  Future<void> confirmNoPoop(String date, {bool deleteRecords = false}) async {
+    final parsed = DateTime.tryParse(date);
+    if (parsed == null ||
+        formatDate(parsed) != date ||
+        date.compareTo(today) > 0) {
+      throw ArgumentError('请选择今天或过去的日期');
+    }
+    await _db.transaction((txn) async {
+      final profiles = await txn.query(
+        'profiles',
+        where: 'deleted = 0',
+        limit: 1,
+      );
+      if (profiles.isEmpty) throw StateError('请先创建档案');
+      final profile = profiles.first['id'];
+      final records = await txn.query(
+        'records',
+        where: 'profile_id = ? AND date = ? AND deleted = 0',
+        whereArgs: [profile, date],
+      );
+      if (records.isNotEmpty && !deleteRecords) throw StateError('需要确认删除当天记录');
+      for (final record in records) {
+        await txn.update(
+          'records',
+          {
+            'deleted': 1,
+            'version': (record['version'] as int) + 1,
+            'modified_at': now().toUtc().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [record['id']],
+        );
+      }
+      await txn.insert('no_poop', {
+        'profile_id': profile,
+        'date': date,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    });
+  }
+
+  Future<void> deleteRecord(String id) async {
+    await _db.transaction((txn) async {
+      final rows = await txn.query(
+        'records',
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [id],
+      );
+      if (rows.isEmpty) throw StateError('记录不存在');
+      await txn.update(
+        'records',
+        {
+          'deleted': 1,
+          'version': (rows.first['version'] as int) + 1,
+          'modified_at': now().toUtc().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+    _undoDeadlines[id] = now().add(undoDuration);
+  }
+
+  Future<void> undoDelete(String id, {bool clearConfirmation = false}) async {
+    final deadline = _undoDeadlines[id];
+    if (deadline == null || !now().isBefore(deadline)) {
+      throw StateError('撤销已过期');
+    }
+    await _db.transaction((txn) async {
+      final rows = await txn.query(
+        'records',
+        where: 'id = ? AND deleted = 1',
+        whereArgs: [id],
+      );
+      if (rows.isEmpty) throw StateError('记录不存在');
+      final record = rows.first;
+      final confirmations = await txn.query(
+        'no_poop',
+        where: 'profile_id = ? AND date = ?',
+        whereArgs: [record['profile_id'], record['date']],
+      );
+      if (confirmations.isNotEmpty && !clearConfirmation) {
+        throw ConfirmationRequired();
+      }
+      await txn.delete(
+        'no_poop',
+        where: 'profile_id = ? AND date = ?',
+        whereArgs: [record['profile_id'], record['date']],
+      );
+      await txn.update(
+        'records',
+        {
+          'deleted': 0,
+          'version': (record['version'] as int) + 1,
+          'modified_at': now().toUtc().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+    _undoDeadlines.remove(id);
   }
 
   Future<void> close() => _db.close();
