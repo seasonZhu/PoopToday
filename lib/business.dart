@@ -28,11 +28,23 @@ class Business {
     final db = await (factory ?? databaseFactory).openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 4,
+        version: 5,
         onConfigure: (db) async {
-          await db.execute('PRAGMA foreign_keys = ON');
+          await db.execute('PRAGMA foreign_keys = OFF');
         },
+        onOpen: (db) async => db.execute('PRAGMA foreign_keys = ON'),
         onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 5) {
+            await db.execute(
+              'CREATE TABLE profiles_new (id TEXT PRIMARY KEY, phone TEXT NOT NULL, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
+            );
+            await db.execute('INSERT INTO profiles_new SELECT * FROM profiles');
+            await db.execute('DROP TABLE profiles');
+            await db.execute('ALTER TABLE profiles_new RENAME TO profiles');
+            await db.execute(
+              'CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)',
+            );
+          }
           if (oldVersion < 2) {
             await db.execute('ALTER TABLE records ADD COLUMN local_time TEXT');
             await db.execute('ALTER TABLE records ADD COLUMN time_zone TEXT');
@@ -56,10 +68,13 @@ class Business {
         },
         onCreate: (db, version) async {
           await db.execute(
+            'CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)',
+          );
+          await db.execute(
             'CREATE TABLE no_poop (profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, PRIMARY KEY(profile_id, date))',
           );
           await db.execute(
-            'CREATE TABLE profiles (id TEXT PRIMARY KEY, phone TEXT NOT NULL UNIQUE, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
+            'CREATE TABLE profiles (id TEXT PRIMARY KEY, phone TEXT NOT NULL, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
           );
           await db.execute(
             'CREATE TABLE records (id TEXT PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, local_time TEXT, time_zone TEXT, utc_offset_minutes INTEGER, ease_id TEXT NOT NULL, ease_name TEXT NOT NULL, amount_id TEXT NOT NULL, amount_name TEXT NOT NULL, amount_value INTEGER, version INTEGER NOT NULL, created_at TEXT NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
@@ -75,22 +90,110 @@ class Business {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
+  Future<List<Map<String, Object?>>> profiles() =>
+      _db.query('profiles', where: 'deleted = 0', orderBy: 'rowid');
+
   Future<String?> phone() async {
-    final rows = await _db.query('profiles', where: 'deleted = 0', limit: 1);
+    final rows = await _db.query('profiles', where: _activeWhere, limit: 1);
     return rows.isEmpty ? null : rows.first['phone'] as String;
   }
 
-  Future<void> createProfile(String phone) async {
+  static const _activeWhere =
+      "deleted = 0 AND id = (SELECT id FROM profiles WHERE deleted = 0 ORDER BY id = COALESCE((SELECT value FROM settings WHERE key = 'profile'), '') DESC, rowid LIMIT 1)";
+
+  Future<void> selectProfile(String id) async {
+    await _db.transaction((txn) async {
+      final rows = await txn.query(
+        'profiles',
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [id],
+      );
+      if (rows.isEmpty) throw StateError('档案不存在');
+      await txn.insert('settings', {
+        'key': 'profile',
+        'value': id,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
+  Future<void> _validatePhone(
+    Transaction txn,
+    String phone, {
+    String? except,
+  }) async {
     if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(phone)) {
       throw ArgumentError('请输入中国大陆 11 位手机号');
     }
+    final rows = await txn.query(
+      'profiles',
+      where: 'phone = ? AND deleted = 0 AND id != ?',
+      whereArgs: [phone, except ?? ''],
+    );
+    if (rows.isNotEmpty) throw ArgumentError('该手机号已有有效档案');
+  }
+
+  Future<void> createProfile(String phone) async {
     await _db.transaction((txn) async {
+      await _validatePhone(txn, phone);
+      final id = const Uuid().v4();
       await txn.insert('profiles', {
-        'id': const Uuid().v4(),
+        'id': id,
         'phone': phone,
         'version': 1,
         'modified_at': now().toUtc().toIso8601String(),
       });
+      await txn.insert('settings', {
+        'key': 'profile',
+        'value': id,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
+  Future<void> updatePhone(String phone) async {
+    await _db.transaction((txn) async {
+      final rows = await txn.query('profiles', where: _activeWhere);
+      if (rows.isEmpty) throw StateError('请先创建档案');
+      final row = rows.first;
+      await _validatePhone(txn, phone, except: row['id'] as String);
+      await txn.update(
+        'profiles',
+        {
+          'phone': phone,
+          'version': (row['version'] as int) + 1,
+          'modified_at': now().toUtc().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    });
+  }
+
+  Future<void> deleteProfile() async {
+    await _db.transaction((txn) async {
+      final rows = await txn.query('profiles', where: _activeWhere);
+      if (rows.isEmpty) throw StateError('请先创建档案');
+      final row = rows.first;
+      await txn.delete(
+        'records',
+        where: 'profile_id = ?',
+        whereArgs: [row['id']],
+      );
+      await txn.delete(
+        'no_poop',
+        where: 'profile_id = ?',
+        whereArgs: [row['id']],
+      );
+      await txn.update(
+        'profiles',
+        {
+          'phone': '',
+          'deleted': 1,
+          'version': (row['version'] as int) + 1,
+          'modified_at': now().toUtc().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
     });
   }
 
@@ -122,7 +225,7 @@ class Business {
     await _db.transaction((txn) async {
       final profiles = await txn.query(
         'profiles',
-        where: 'deleted = 0',
+        where: _activeWhere,
         limit: 1,
       );
       if (profiles.isEmpty) throw StateError('请先创建档案');
@@ -187,10 +290,10 @@ class Business {
 
   Future<Map<String, int>> dailyCounts() async {
     final rows = await _db.rawQuery(
-      'SELECT date, COUNT(*) AS count FROM records WHERE deleted = 0 AND profile_id = (SELECT id FROM profiles WHERE deleted = 0 LIMIT 1) GROUP BY date',
+      'SELECT date, COUNT(*) AS count FROM records WHERE deleted = 0 AND profile_id = (SELECT id FROM profiles WHERE $_activeWhere) GROUP BY date',
     );
     final confirmations = await _db.rawQuery(
-      'SELECT date FROM no_poop WHERE profile_id = (SELECT id FROM profiles WHERE deleted = 0 LIMIT 1)',
+      'SELECT date FROM no_poop WHERE profile_id = (SELECT id FROM profiles WHERE $_activeWhere)',
     );
     return {
       for (final row in confirmations) row['date'] as String: 0,
@@ -201,11 +304,7 @@ class Business {
   Future<List<Map<String, Object?>>> todayRecords() => recordsForDate(today);
 
   Future<List<Map<String, Object?>>> recordsForDate(String date) async {
-    final profiles = await _db.query(
-      'profiles',
-      where: 'deleted = 0',
-      limit: 1,
-    );
+    final profiles = await _db.query('profiles', where: _activeWhere, limit: 1);
     if (profiles.isEmpty) return [];
     return _db.query(
       'records',
@@ -226,7 +325,7 @@ class Business {
     await _db.transaction((txn) async {
       final profiles = await txn.query(
         'profiles',
-        where: 'deleted = 0',
+        where: _activeWhere,
         limit: 1,
       );
       if (profiles.isEmpty) throw StateError('请先创建档案');
@@ -260,7 +359,8 @@ class Business {
     await _db.transaction((txn) async {
       final rows = await txn.query(
         'records',
-        where: 'id = ? AND deleted = 0',
+        where:
+            'id = ? AND deleted = 0 AND profile_id = (SELECT id FROM profiles WHERE $_activeWhere)',
         whereArgs: [id],
       );
       if (rows.isEmpty) throw StateError('记录不存在');

@@ -83,7 +83,7 @@ void main() {
       expect(records.single['date'], '2026-11-09');
       await app.saveToday('顺畅', '99');
       expect((await app.todayRecords()).length, 2);
-      await expectLater(app.createProfile('13800138000'), throwsException);
+      await expectLater(app.createProfile('13800138000'), throwsArgumentError);
       expect(records.single['ease_name'], '顺畅');
     } finally {
       await app.close();

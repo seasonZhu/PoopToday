@@ -51,6 +51,7 @@ class _RecordPageState extends State<RecordPage> {
   final amountController = TextEditingController();
   late String selectedDate = widget.business.today;
   DateTime? calendarMonth;
+  int calendarRevision = 0;
   Map<String, int> counts = {};
   Map<String, Object?>? editing;
   String? localTime;
@@ -227,6 +228,100 @@ class _RecordPageState extends State<RecordPage> {
     }
   }
 
+  Future<void> manageProfiles() async {
+    if (!await discard() || !mounted) return;
+    final profiles = await widget.business.profiles();
+    if (!mounted) return;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('管理档案'),
+        children: [
+          for (final profile in profiles)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, profile['id'] as String),
+              child: Text(
+                '${profile['phone']}${profiles.where((p) => p['phone'] == profile['phone']).length > 1 ? ' · ${(profile['id'] as String).substring(0, 8)}' : ''}',
+              ),
+            ),
+          for (final action in ['新增档案', '修改手机号', '删除档案'])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, action),
+              child: Text(action),
+            ),
+        ],
+      ),
+    );
+    if (action == null || !mounted) return;
+    setState(() => saving = true);
+    try {
+      if (action == '删除档案') {
+        if (!await confirm('删除档案 $phone？将清除该档案的全部排便记录和日期状态，删除最后一个档案后需重新建档。')) {
+          return;
+        }
+        await widget.business.deleteProfile();
+      } else if (action == '新增档案' || action == '修改手机号') {
+        final controller = TextEditingController(
+          text: action == '修改手机号' ? phone : '',
+        );
+        final value = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(action),
+            content: TextField(
+              controller: controller,
+              keyboardType: TextInputType.phone,
+              maxLength: 11,
+              decoration: const InputDecoration(labelText: '手机号'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, controller.text.trim()),
+                child: const Text('保存'),
+              ),
+            ],
+          ),
+        );
+        // 对话框退出动画结束后释放输入控制器。
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        controller.dispose();
+        if (value == null) return;
+        if (action == '新增档案') {
+          await widget.business.createProfile(value);
+        } else {
+          await widget.business.updatePhone(value);
+        }
+      } else {
+        await widget.business.selectProfile(action);
+      }
+      if (!mounted) return;
+      setState(() {
+        editing = null;
+        ease = null;
+        amount = null;
+        localTime = null;
+        amountController.clear();
+        phoneController.clear();
+        selectedDate = widget.business.today;
+        calendarMonth = null;
+        calendarRevision++;
+        calendarHome = true;
+        error = null;
+      });
+      await refresh();
+    } on ArgumentError catch (e) {
+      if (mounted) setState(() => error = e.message.toString());
+    } catch (_) {
+      if (mounted) setState(() => error = '档案操作失败，请重试');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
   @override
   void dispose() {
     phoneController.dispose();
@@ -253,6 +348,13 @@ class _RecordPageState extends State<RecordPage> {
     child: Scaffold(
       appBar: AppBar(
         title: const Text('今天排便了吗', style: TextStyle(fontSize: 20)),
+        actions: [
+          if (phone != null)
+            TextButton(
+              onPressed: saving ? null : manageProfiles,
+              child: Text(phone!),
+            ),
+        ],
         leading: calendarHome
             ? null
             : IconButton(
@@ -288,12 +390,12 @@ class _RecordPageState extends State<RecordPage> {
                     decoration: const InputDecoration(labelText: '手机号'),
                   ),
                 ] else ...[
-                  Text('本地用户档案 · $phone'),
                   Offstage(
                     offstage: !calendarHome,
                     child: SizedBox(
                       height: 380,
                       child: RecordCalendar(
+                        key: ValueKey(calendarRevision),
                         initialMonth: calendarMonth,
                         onMonthChanged: (month) => calendarMonth = month,
                         selected: DateTime.parse(selectedDate),

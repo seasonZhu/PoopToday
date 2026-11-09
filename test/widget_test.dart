@@ -18,6 +18,36 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('档案选择器与删除确认，最后档案删除后建档', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(inMemoryDatabasePath, factory: databaseFactoryFfi),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() => app.createProfile('13800138000'));
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.text('13800138000'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('管理档案'));
+    await tester.tap(find.text('删除档案'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('确认'));
+    expect(find.textContaining('全部排便记录和日期状态'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(await tester.runAsync(app.phone), '13800138000');
+    await tester.tap(find.text('13800138000'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('删除档案'));
+    await tester.tap(find.text('删除档案'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('确认'));
+    await tester.tap(find.text('确认'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('创建本地用户档案'));
+  });
+
   testWidgets('自定义数值仅本次填写，不增加快捷项', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
