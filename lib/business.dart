@@ -417,7 +417,7 @@ class Business {
                     .inDays +
                 1;
       final ease = {for (final name in easeOptions) name: 0};
-      final amount = <String, int>{};
+      final amount = {for (final value in amountOptions) value: 0};
       for (final row in rows) {
         final e = easeCategory(row);
         final a = amountCategory(row);

@@ -23,7 +23,7 @@ void main() {
     expect(month.recordedDays, 1);
     expect(month.confirmedDays, 1);
     expect(month.unfilledDays, 7);
-    expect(month.amount.keys, ['3', '4']);
+    expect(month.amount.keys, ['1', '2', '3', '4']);
     final week = await app.statistics(
       DateTime(2026, 10, 26),
       DateTime(2026, 11, 1),

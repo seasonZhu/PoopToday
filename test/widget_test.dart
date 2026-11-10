@@ -23,6 +23,27 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('日历按日期展示三态且不显示次数', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 400,
+            child: RecordCalendar(
+              selected: DateTime(2026, 11, 9),
+              today: DateTime(2026, 11, 9),
+              counts: const {'2026-11-01': 2, '2026-11-02': 0},
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('1\n✅'), findsOneWidget);
+    expect(find.text('2\n❌'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    expect(find.textContaining('次'), findsNothing);
+  });
+
   testWidgets('昵称展示、设置导航与编辑持久化', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
@@ -102,7 +123,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.arrow_back).first);
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('记录今天'));
-    await waitFor(tester, find.textContaining('2026年11月概览'));
+    await waitFor(tester, find.text('待填写'));
     await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(

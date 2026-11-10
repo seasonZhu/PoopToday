@@ -35,7 +35,7 @@ class PoopTodayApp extends StatelessWidget {
     supportedLocales: const [Locale('zh', 'CN')],
     title: '今天排便了吗',
     theme: ThemeData(
-      colorSchemeSeed: Colors.teal,
+      colorSchemeSeed: const Color(0xFF7D916A),
       scaffoldBackgroundColor: const Color(0xFFFFFCF5),
       useMaterial3: true,
     ),
@@ -623,8 +623,11 @@ class _RecordPageState extends State<RecordPage> {
                     ),
                   ),
                   if (calendarHome) ...[
-                    const Text('次数表示排便次数 · — 表示未排便 · 留空表示尚未填写'),
-                    TextButton(
+                    const Text('✅ 已排便 · ❌ 确认未排便 · 留空尚未填写'),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 52),
+                      ),
                       onPressed: () async {
                         await openDay(widget.business.today);
                       },
@@ -918,6 +921,7 @@ class _RecordCalendarState extends State<RecordCalendar> {
             Expanded(
               child: Text(
                 '${month.year}年${month.month}月',
+                style: Theme.of(context).textTheme.titleLarge,
                 textAlign: TextAlign.center,
               ),
             ),
@@ -975,8 +979,8 @@ class _RecordCalendarState extends State<RecordCalendar> {
                           '${date.day}${count == null
                               ? ''
                               : count == 0
-                              ? '\n—'
-                              : '\n$count次'}',
+                              ? '\n❌'
+                              : '\n✅'}',
                           textAlign: TextAlign.center,
                         ),
                       );
@@ -1079,8 +1083,35 @@ class _HomeStatisticsState extends State<HomeStatistics> {
             if (widget.overview) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  '${widget.month.year}年${widget.month.month}月概览\n排便总次数 ${data.total} · 已排便 ${data.recordedDays}天\n确认未排便 ${data.confirmedDays}天 · 尚未填写 ${data.unfilledDays}天',
+                child: Row(
+                  children: [
+                    for (final item in [
+                      ('排便次数', '${data.total}'),
+                      ('已排便', '${data.recordedDays}天'),
+                      ('未排便', '${data.confirmedDays}天'),
+                      ('待填写', '${data.unfilledDays}天'),
+                    ])
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text(
+                              item.$1,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              item.$2,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
               );
             }
