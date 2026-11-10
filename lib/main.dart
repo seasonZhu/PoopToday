@@ -87,7 +87,7 @@ class RecordPage extends StatefulWidget {
   State<RecordPage> createState() => _RecordPageState();
 }
 
-class _RecordPageState extends State<RecordPage> {
+class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
   bool exporting = false;
 
   Future<void> exportBackup() async {
@@ -289,7 +289,13 @@ class _RecordPageState extends State<RecordPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     refresh();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) refresh();
   }
 
   Future<void> refresh() async {
@@ -565,6 +571,7 @@ class _RecordPageState extends State<RecordPage> {
   void dispose() {
     nicknameController.dispose();
     phoneController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 

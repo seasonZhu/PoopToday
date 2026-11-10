@@ -22,6 +22,32 @@ class Notifications implements NotificationAdapter {
 }
 
 void main() {
+  test('时间配置校验、删除末项关闭及档案隔离', () async {
+    sqfliteFfiInit();
+    final business = await Business.open(
+      inMemoryDatabasePath,
+      factory: databaseFactoryFfi,
+      now: () => DateTime(2026, 11, 10, 9),
+    );
+    addTearDown(business.close);
+    await business.createProfile('13800138000');
+    final platform = Notifications();
+    final service = ReminderService(business, platform);
+    await service.saveTimes([720, 630]);
+    expect(await service.times(), [630, 720]);
+    await expectLater(service.saveTimes([630, 630]), throwsArgumentError);
+    await service.setEnabled(true);
+    expect(platform.pending.first.at, DateTime(2026, 11, 10, 10, 30));
+    expect(platform.pending.length, lessThanOrEqualTo(60));
+    expect(await business.exportBackup(), isNot(contains('reminder:')));
+    await service.saveTimes([]);
+    expect(await service.enabled(), false);
+    expect(await service.setEnabled(true), false);
+    expect(platform.pending, isEmpty);
+    await business.createProfile('13900139000');
+    expect(await service.times(), [600, 1320]);
+    expect(await service.enabled(), false);
+  });
   test('重新打开保留当前档案配置，关闭后取消通知', () async {
     sqfliteFfiInit();
     final directory = await Directory.systemTemp.createTemp('reminders');
