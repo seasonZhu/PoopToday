@@ -59,7 +59,8 @@ void main() {
     final path = '${dir.path}/db';
     var app = await Business.open(path, factory: databaseFactoryFfi);
     try {
-      await app.createProfile('13800138000');
+      await app.createProfile('13800138000', nickname: '家人');
+      expect((await app.profiles()).single['nickname'], '家人');
       final first = (await app.profiles()).single['id'] as String;
       await app.saveToday('顺畅', '3');
       await expectLater(app.createProfile('13800138000'), throwsArgumentError);
@@ -69,7 +70,12 @@ void main() {
       await app.selectProfile(first);
       expect((await app.todayRecords()).length, 1);
       expect((await app.dailyCounts())[app.today], 1);
-      await app.updatePhone('13700137000');
+      await app.updatePhone('13700137000', nickname: '自己');
+      expect((await app.activeProfile())?['id'], first);
+      final backup = await app.exportBackup();
+      await app.updatePhone('13700137000', nickname: '临时');
+      await app.applyImport(await app.previewImport(backup));
+      expect((await app.activeProfile())?['nickname'], '自己');
       await app.close();
       app = await Business.open(path, factory: databaseFactoryFfi);
       expect(await app.phone(), '13700137000');

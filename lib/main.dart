@@ -163,6 +163,7 @@ class _RecordPageState extends State<RecordPage> {
   }
 
   final phoneController = TextEditingController();
+  final nicknameController = TextEditingController();
   late String selectedDate = widget.date ?? widget.business.today;
   late DateTime calendarMonth = DateTime.parse(widget.business.today);
   int calendarRevision = 0;
@@ -238,6 +239,10 @@ class _RecordPageState extends State<RecordPage> {
   }
 
   String? phone;
+  String nickname = "";
+  String maskedPhone(String value) => value.length == 11
+      ? "${value.substring(0, 3)}****${value.substring(7)}"
+      : value;
   String? ease;
   String? amount;
   String? error;
@@ -254,12 +259,14 @@ class _RecordPageState extends State<RecordPage> {
   Future<void> refresh() async {
     try {
       final currentPhone = await widget.business.phone();
+      final active = await widget.business.activeProfile();
       final currentRecords = await widget.business.recordsForDate(selectedDate);
       final currentCounts = await widget.business.dailyCounts();
       if (!mounted) return;
       setState(() {
         counts = currentCounts;
         phone = currentPhone;
+        nickname = active?["nickname"] as String? ?? "";
         records = currentRecords;
         loading = false;
       });
@@ -293,7 +300,10 @@ class _RecordPageState extends State<RecordPage> {
     });
     try {
       if (phone == null) {
-        await widget.business.createProfile(phoneController.text.trim());
+        await widget.business.createProfile(
+          phoneController.text.trim(),
+          nickname: nicknameController.text,
+        );
       } else {
         await widget.business.saveRecord(
           date: selectedDate,
@@ -382,31 +392,56 @@ class _RecordPageState extends State<RecordPage> {
     if (!await discard() || !mounted) return;
     final profiles = await widget.business.profiles();
     if (!mounted) return;
-    final action = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('管理档案'),
-        children: [
-          for (final profile in profiles)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, profile['id'] as String),
-              child: Text(
-                '${profile['phone']}${profiles.where((p) => p['phone'] == profile['phone']).length > 1 ? ' · ${(profile['id'] as String).substring(0, (profile['id'] as String).length.clamp(0, 8))}' : ''}',
+    final action = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: const Color(0xFFFAFAF5),
+          appBar: AppBar(title: const Text('设置')),
+          body: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              for (final profile in profiles)
+                ListTile(
+                  title: Text(
+                    (profile['nickname'] as String?)?.isNotEmpty == true
+                        ? profile['nickname'] as String
+                        : '本地用户档案',
+                  ),
+                  subtitle: Text(
+                    '${maskedPhone(profile['phone'] as String)} · ${(profile['id'] as String).substring(0, (profile['id'] as String).length.clamp(0, 8))}',
+                  ),
+                  onTap: () => Navigator.pop(context, profile['id'] as String),
+                ),
+              for (final action in ['新增档案', '修改手机号', '删除档案'])
+                ListTile(
+                  title: Text(action),
+                  onTap: () => Navigator.pop(context, action),
+                ),
+              ListTile(
+                title: const Text('导入备份'),
+                onTap: () => Navigator.pop(context, '导入备份'),
               ),
-            ),
-          for (final action in ['新增档案', '修改手机号', '删除档案'])
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, action),
-              child: Text(action),
-            ),
-        ],
+              ListTile(
+                title: const Text('导出备份'),
+                onTap: () => Navigator.pop(context, '导出备份'),
+              ),
+              ListTile(title: const Text('推送设置'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => Scaffold(appBar: AppBar(title: const Text('推送设置')), body: const Center(child: Text('填写提醒即将开放')))))),
+            ],
+          ),
+        ),
       ),
     );
     if (action == null || !mounted) return;
     setState(() => saving = true);
     try {
-      if (action == '删除档案') {
-        if (!await confirm('删除档案 $phone？将清除该档案的全部排便记录和日期状态，删除最后一个档案后需重新建档。')) {
+      if (action == '导入备份') {
+        await importBackup();
+      } else if (action == '导出备份') {
+        await exportBackup();
+      } else if (action == '删除档案') {
+        if (!await confirm(
+          '删除档案 ${maskedPhone(phone!)}？将清除该档案的全部排便记录和日期状态，删除最后一个档案后需重新建档。',
+        )) {
           return;
         }
         await widget.business.deleteProfile();
@@ -414,15 +449,27 @@ class _RecordPageState extends State<RecordPage> {
         final controller = TextEditingController(
           text: action == '修改手机号' ? phone : '',
         );
+        final nameController = TextEditingController(
+          text: action == '修改手机号' ? nickname : '',
+        );
         final value = await showDialog<String>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(action),
-            content: TextField(
-              controller: controller,
-              keyboardType: TextInputType.phone,
-              maxLength: 11,
-              decoration: const InputDecoration(labelText: '手机号'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: "昵称（选填）"),
+                ),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.phone,
+                  maxLength: 11,
+                  decoration: const InputDecoration(labelText: '手机号'),
+                ),
+              ],
             ),
             actions: [
               TextButton(
@@ -438,12 +485,14 @@ class _RecordPageState extends State<RecordPage> {
         );
         // 对话框退出动画结束后释放输入控制器。
         await Future<void>.delayed(const Duration(milliseconds: 300));
+        final name = nameController.text;
+        nameController.dispose();
         controller.dispose();
         if (value == null) return;
         if (action == '新增档案') {
-          await widget.business.createProfile(value);
+          await widget.business.createProfile(value, nickname: name);
         } else {
-          await widget.business.updatePhone(value);
+          await widget.business.updatePhone(value, nickname: name);
         }
       } else {
         await widget.business.selectProfile(action);
@@ -473,6 +522,7 @@ class _RecordPageState extends State<RecordPage> {
 
   @override
   void dispose() {
+    nicknameController.dispose();
     phoneController.dispose();
     super.dispose();
   }
@@ -517,7 +567,7 @@ class _RecordPageState extends State<RecordPage> {
           if (phone != null)
             TextButton(
               onPressed: saving ? null : manageProfiles,
-              child: Text(phone!),
+              child: Text(nickname.isNotEmpty ? nickname : maskedPhone(phone!)),
             ),
         ],
         leading: calendarHome
@@ -535,6 +585,10 @@ class _RecordPageState extends State<RecordPage> {
               children: [
                 if (phone == null) ...[
                   const Text('创建本地用户档案', style: TextStyle(fontSize: 24)),
+                  TextField(
+                    controller: nicknameController,
+                    decoration: const InputDecoration(labelText: '昵称（选填）'),
+                  ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: phoneController,

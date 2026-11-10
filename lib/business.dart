@@ -30,17 +30,20 @@ class Business {
     final db = await (factory ?? databaseFactory).openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 5,
+        version: 6,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = OFF');
         },
         onOpen: (db) async => db.execute('PRAGMA foreign_keys = ON'),
         onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 6) {
+            await db.execute('ALTER TABLE profiles ADD COLUMN nickname TEXT');
+          }
           if (oldVersion < 5) {
             await db.execute(
-              'CREATE TABLE profiles_new (id TEXT PRIMARY KEY, phone TEXT NOT NULL, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
+              'CREATE TABLE profiles_new (id TEXT PRIMARY KEY, phone TEXT NOT NULL, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, nickname TEXT)',
             );
-            await db.execute('INSERT INTO profiles_new SELECT * FROM profiles');
+            await db.execute('INSERT INTO profiles_new (id, phone, version, modified_at, deleted) SELECT id, phone, version, modified_at, deleted FROM profiles');
             await db.execute('DROP TABLE profiles');
             await db.execute('ALTER TABLE profiles_new RENAME TO profiles');
             await db.execute(
@@ -76,7 +79,7 @@ class Business {
             'CREATE TABLE no_poop (profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, PRIMARY KEY(profile_id, date))',
           );
           await db.execute(
-            'CREATE TABLE profiles (id TEXT PRIMARY KEY, phone TEXT NOT NULL, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
+            'CREATE TABLE profiles (id TEXT PRIMARY KEY, phone TEXT NOT NULL, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, nickname TEXT)',
           );
           await db.execute(
             'CREATE TABLE records (id TEXT PRIMARY KEY, profile_id TEXT NOT NULL REFERENCES profiles(id), date TEXT NOT NULL, local_time TEXT, time_zone TEXT, utc_offset_minutes INTEGER, ease_id TEXT NOT NULL, ease_name TEXT NOT NULL, amount_id TEXT NOT NULL, amount_name TEXT NOT NULL, amount_value INTEGER, version INTEGER NOT NULL, created_at TEXT NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)',
@@ -94,6 +97,11 @@ class Business {
 
   Future<List<Map<String, Object?>>> profiles() =>
       _db.query('profiles', where: 'deleted = 0', orderBy: 'rowid');
+
+  Future<Map<String, Object?>?> activeProfile() async {
+    final rows = await _db.query("profiles", where: _activeWhere, limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
 
   Future<String?> phone() async {
     final rows = await _db.query('profiles', where: _activeWhere, limit: 1);
@@ -134,13 +142,14 @@ class Business {
     if (rows.isNotEmpty) throw ArgumentError('该手机号已有有效档案');
   }
 
-  Future<void> createProfile(String phone) async {
+  Future<void> createProfile(String phone, {String? nickname}) async {
     await _db.transaction((txn) async {
       await _validatePhone(txn, phone);
       final id = const Uuid().v4();
       await txn.insert('profiles', {
         'id': id,
         'phone': phone,
+        'nickname': nickname?.trim(),
         'version': 1,
         'modified_at': now().toUtc().toIso8601String(),
       });
@@ -151,16 +160,19 @@ class Business {
     });
   }
 
-  Future<void> updatePhone(String phone) async {
+  Future<void> updatePhone(String phone, {String? nickname}) async {
     await _db.transaction((txn) async {
       final rows = await txn.query('profiles', where: _activeWhere);
       if (rows.isEmpty) throw StateError('请先创建档案');
       final row = rows.first;
-      await _validatePhone(txn, phone, except: row['id'] as String);
+      if (nickname == null || phone != row['phone']) {
+        await _validatePhone(txn, phone, except: row['id'] as String);
+      }
       await txn.update(
         'profiles',
         {
           'phone': phone,
+          'nickname': nickname?.trim() ?? row['nickname'],
           'version': (row['version'] as int) + 1,
           'modified_at': now().toUtc().toIso8601String(),
         },
@@ -499,7 +511,7 @@ class Business {
       '备份时间或时区无效',
     );
     const columns = {
-      'profiles': {'id', 'phone', 'version', 'modified_at', 'deleted'},
+      'profiles': {'id', 'phone', 'nickname', 'version', 'modified_at', 'deleted'},
       'records': {
         'id',
         'profile_id',
@@ -521,7 +533,10 @@ class Business {
     };
     for (final table in rows.keys) {
       for (final row in rows[table]!) {
-        final required = {...columns[table]!};
+        final required = {...columns[table]!}..remove('nickname');
+        if (table == 'profiles') {
+          require(row['nickname'] == null || row['nickname'] is String, '昵称无效');
+        }
         if (table == 'profiles' && row['deleted'] == 1) {
           required.remove('phone');
         }

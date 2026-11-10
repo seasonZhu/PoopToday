@@ -23,6 +23,28 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('昵称展示、设置导航与编辑持久化', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(inMemoryDatabasePath, factory: databaseFactoryFfi),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() => app.createProfile('13800138000', nickname: '家人'));
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('家人'));
+    await tester.tap(find.text('家人'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('设置'));
+    expect(find.textContaining('138****8000'), findsOneWidget);
+    await tester.tap(find.text('修改手机号'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '家人'), '自己');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('自己'));
+    expect((await tester.runAsync(app.activeProfile))?['nickname'], '自己');
+  });
+
   testWidgets('当日页四档必填、多记录、互斥转换与返回', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
@@ -146,7 +168,7 @@ void main() {
     await waitFor(tester, find.textContaining('导入内容优先'));
     expect(await tester.runAsync(app.phone), '13700137000');
     await tester.tap(find.text('确认'));
-    await waitFor(tester, find.text('13800138000'));
+    await waitFor(tester, find.text('138****8000'));
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 200)),
     );
@@ -241,9 +263,9 @@ void main() {
     await tester.runAsync(() => app.createProfile('13800138000'));
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.text('记录今天'));
-    await tester.tap(find.text('13800138000'));
+    await tester.tap(find.text('138****8000'));
     await tester.pumpAndSettle();
-    await waitFor(tester, find.text('管理档案'));
+    await waitFor(tester, find.text('设置'));
     await tester.tap(find.text('删除档案'));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('确认'));
@@ -251,7 +273,7 @@ void main() {
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(await tester.runAsync(app.phone), '13800138000');
-    await tester.tap(find.text('13800138000'));
+    await tester.tap(find.text('138****8000'));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('删除档案'));
     await tester.tap(find.text('删除档案'));
