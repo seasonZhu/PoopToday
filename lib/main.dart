@@ -44,8 +44,9 @@ class PoopTodayApp extends StatelessWidget {
 }
 
 class RecordPage extends StatefulWidget {
-  const RecordPage({super.key, required this.business});
+  const RecordPage({super.key, required this.business, this.date});
   final Business business;
+  final String? date;
   @override
   State<RecordPage> createState() => _RecordPageState();
 }
@@ -162,14 +163,14 @@ class _RecordPageState extends State<RecordPage> {
   }
 
   final phoneController = TextEditingController();
-  final amountController = TextEditingController();
-  late String selectedDate = widget.business.today;
+  late String selectedDate = widget.date ?? widget.business.today;
   late DateTime calendarMonth = DateTime.parse(widget.business.today);
   int calendarRevision = 0;
   Map<String, int> counts = {};
   Map<String, Object?>? editing;
   String? localTime;
   bool get dirty =>
+      (didPoop == false) ||
       (ease != null && ease != editing?['ease_name']) ||
       (amount != null &&
           amount !=
@@ -223,7 +224,19 @@ class _RecordPageState extends State<RecordPage> {
     await refresh();
   }
 
-  bool calendarHome = true;
+  late bool calendarHome = widget.date == null;
+  bool? didPoop;
+
+  Future<void> openDay(String date) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RecordPage(business: widget.business, date: date),
+      ),
+    );
+    await refresh();
+    if (mounted) setState(() => calendarRevision++);
+  }
+
   String? phone;
   String? ease;
   String? amount;
@@ -262,6 +275,18 @@ class _RecordPageState extends State<RecordPage> {
 
   Future<void> save() async {
     if (saving) return;
+    if (phone != null && didPoop == null) {
+      setState(() => error = '请选择是否排便');
+      return;
+    }
+    if (phone != null && didPoop == true && (ease == null || amount == null)) {
+      setState(() => error = '请选择排便通畅度和排便量');
+      return;
+    }
+    if (phone != null && didPoop == false) {
+      await confirmDay();
+      return;
+    }
     setState(() {
       saving = true;
       error = null;
@@ -278,10 +303,10 @@ class _RecordPageState extends State<RecordPage> {
           amount: amount,
         );
         editing = null;
+        didPoop = null;
         localTime = null;
         ease = null;
         amount = null;
-        amountController.clear();
       }
       await refresh();
       if (mounted) {
@@ -326,6 +351,13 @@ class _RecordPageState extends State<RecordPage> {
         selectedDate,
         deleteRecords: hasRecords,
       );
+      if (mounted) {
+        setState(() {
+          didPoop = null;
+          editing = null;
+          error = null;
+        });
+      }
       await refresh();
     } catch (_) {
       if (mounted) setState(() => error = '操作失败，请重试');
@@ -422,7 +454,6 @@ class _RecordPageState extends State<RecordPage> {
         ease = null;
         amount = null;
         localTime = null;
-        amountController.clear();
         phoneController.clear();
         selectedDate = widget.business.today;
         calendarMonth = DateTime.parse(widget.business.today);
@@ -443,29 +474,35 @@ class _RecordPageState extends State<RecordPage> {
   @override
   void dispose() {
     phoneController.dispose();
-    amountController.dispose();
     super.dispose();
+  }
+
+  Future<void> leaveDay() async {
+    if (!await discard() || !mounted) return;
+    setState(() {
+      didPoop = null;
+      ease = null;
+      amount = null;
+      editing = null;
+      localTime = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
   }
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: calendarHome && !dirty,
+    canPop: !dirty && !saving,
     onPopInvokedWithResult: (didPop, result) async {
-      if (didPop) return;
-      if (await discard() && mounted) {
-        setState(() {
-          ease = null;
-          amount = null;
-          amountController.clear();
-          editing = null;
-          localTime = null;
-          calendarHome = true;
-        });
-      }
+      if (!didPop && !saving) await leaveDay();
     },
     child: Scaffold(
       appBar: AppBar(
-        title: const Text('今天排便了吗', style: TextStyle(fontSize: 20)),
+        title: Text(
+          calendarHome ? '今天排便了吗' : '当日记录',
+          style: const TextStyle(fontSize: 20),
+        ),
         actions: [
           IconButton(
             tooltip: '导入备份',
@@ -487,19 +524,7 @@ class _RecordPageState extends State<RecordPage> {
             ? null
             : IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: saving
-                    ? null
-                    : () async {
-                        if (!await discard() || !mounted) return;
-                        setState(() {
-                          calendarHome = true;
-                          editing = null;
-                          ease = null;
-                          amount = null;
-                          localTime = null;
-                          amountController.clear();
-                        });
-                      },
+                onPressed: saving ? null : leaveDay,
               ),
       ),
       body: loading
@@ -538,11 +563,7 @@ class _RecordPageState extends State<RecordPage> {
                         today: DateTime.parse(widget.business.today),
                         counts: counts,
                         onSelected: (date) async {
-                          setState(() {
-                            selectedDate = Business.formatDate(date);
-                            calendarHome = false;
-                          });
-                          await refresh();
+                          await openDay(Business.formatDate(date));
                         },
                       ),
                     ),
@@ -551,11 +572,7 @@ class _RecordPageState extends State<RecordPage> {
                     const Text('次数表示排便次数 · — 表示未排便 · 留空表示尚未填写'),
                     TextButton(
                       onPressed: () async {
-                        setState(() {
-                          selectedDate = widget.business.today;
-                          calendarHome = false;
-                        });
-                        await refresh();
+                        await openDay(widget.business.today);
                       },
                       child: const Text('记录今天'),
                     ),
@@ -588,7 +605,6 @@ class _RecordPageState extends State<RecordPage> {
                                     selectedDate = widget.business.today;
                                     ease = null;
                                     amount = null;
-                                    amountController.clear();
                                     editing = null;
                                     localTime = null;
                                   });
@@ -639,58 +655,70 @@ class _RecordPageState extends State<RecordPage> {
                                   ease = null;
                                   amount = null;
                                   localTime = null;
-                                  amountController.clear();
                                 });
                                 await refresh();
                               },
                         child: const Text('取消编辑'),
                       ),
                     ],
-                    const Text('排便通畅度（必选）'),
+                    const Text('是否排便（必选）'),
                     Wrap(
-                      spacing: 8,
-                      children: Business.easeOptions
-                          .map(
-                            (value) => ChoiceChip(
-                              label: Text(
-                                '${const {'困难': '😣', '一般': '😐', '顺畅': '😊'}[value]} $value',
+                      spacing: 16,
+                      children: [
+                        for (final value in [true, false])
+                          ChoiceChip(
+                            label: Text(value ? '✅' : '❌'),
+                            selected: didPoop == value,
+                            onSelected: saving
+                                ? null
+                                : (_) => setState(() {
+                                    didPoop = value;
+                                    if (!value) {
+                                      ease = null;
+                                      amount = null;
+                                      localTime = null;
+                                    }
+                                  }),
+                          ),
+                      ],
+                    ),
+                    if (didPoop == true) ...[
+                      const Text('排便量（必选）'),
+                      Wrap(
+                        spacing: 8,
+                        children: Business.amountOptions
+                            .map(
+                              (value) => ChoiceChip(
+                                label: Text('💩 × $value'),
+                                selected: amount == value,
+                                onSelected: saving
+                                    ? null
+                                    : (_) => setState(() {
+                                        amount = value;
+                                      }),
                               ),
-                              selected: ease == value,
-                              onSelected: saving
-                                  ? null
-                                  : (_) => setState(() => ease = value),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('排便量（必选）'),
-                    Wrap(
-                      spacing: 8,
-                      children: Business.amountOptions
-                          .map(
-                            (value) => ChoiceChip(
-                              label: Text('💩 × $value'),
-                              selected: amount == value,
-                              onSelected: saving
-                                  ? null
-                                  : (_) => setState(() {
-                                      amount = value;
-                                      amountController.clear();
-                                    }),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                    TextFormField(
-                      controller: amountController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: '自定义排便量（1～99）',
+                            )
+                            .toList(),
                       ),
-                      onChanged: (value) =>
-                          setState(() => amount = value.isEmpty ? null : value),
-                    ),
+                      const Text('排便通畅度（必选）'),
+                      Wrap(
+                        spacing: 8,
+                        children: Business.easeOptions
+                            .map(
+                              (value) => ChoiceChip(
+                                label: Text(
+                                  '${const {'困难': '😣', '一般': '😐', '顺畅': '😊'}[value]} $value',
+                                ),
+                                selected: ease == value,
+                                onSelected: saving
+                                    ? null
+                                    : (_) => setState(() => ease = value),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                   ],
                 ],
                 if (error != null)
@@ -721,11 +749,16 @@ class _RecordPageState extends State<RecordPage> {
                   ),
                 if (phone != null && !calendarHome) ...[
                   const SizedBox(height: 24),
-                  TextButton(
-                    onPressed: saving ? null : confirmDay,
-                    child: const Text('确认当天未排便'),
+
+                  const Divider(height: 32),
+                  Text(
+                    '所选日期的记录（${records.length}）',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  Text('所选日期的记录（${records.length}）'),
+                  const Text('点击记录可编辑 · 左滑删除'),
                   if (records.isEmpty)
                     Padding(
                       padding: const EdgeInsets.all(16),
@@ -762,6 +795,7 @@ class _RecordPageState extends State<RecordPage> {
                                   if (!await discard() || !mounted) return;
                                   setState(() {
                                     editing = record;
+                                    didPoop = true;
                                     ease =
                                         Business.easeOptions.contains(
                                           record['ease_name'],
@@ -769,13 +803,6 @@ class _RecordPageState extends State<RecordPage> {
                                         ? record['ease_name'] as String
                                         : null;
                                     amount = record['amount_value']?.toString();
-                                    amountController.text =
-                                        amount != null &&
-                                            !Business.amountOptions.contains(
-                                              amount,
-                                            )
-                                        ? amount!
-                                        : '';
                                     localTime = record['local_time'] as String?;
                                   });
                                 },

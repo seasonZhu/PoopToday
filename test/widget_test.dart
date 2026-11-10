@@ -23,6 +23,72 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('当日页四档必填、多记录、互斥转换与返回', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(
+        inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+        now: () => DateTime(2026, 11, 9, 12),
+      ),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() => app.createProfile('13800138000'));
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.text('记录今天'));
+    await waitFor(tester, find.text('✅'));
+    await tester.pumpAndSettle();
+    expect(find.text('排便量（必选）'), findsNothing);
+    await tester.tap(find.text('✅'));
+    await tester.pumpAndSettle();
+    expect(find.text('💩 × 4'), findsOneWidget);
+    expect(find.text('💩 × 5'), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('排便量（必选）')).dy,
+      lessThan(tester.getTopLeft(find.text('排便通畅度（必选）')).dy),
+    );
+    for (final amount in ['2', '4']) {
+      await tester.ensureVisible(find.text('✅'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('✅'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('💩 × $amount'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('💩 × $amount'));
+      await tester.ensureVisible(find.text('😊 顺畅'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('😊 顺畅'));
+      await tester.ensureVisible(find.text('保存今天的记录'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存今天的记录'));
+      await waitFor(tester, find.text('顺畅 · 💩 × $amount'));
+    }
+    expect((await tester.runAsync(app.todayRecords))!, hasLength(2));
+    await tester.ensureVisible(find.text('❌'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('❌'));
+    await tester.pumpAndSettle();
+    expect(find.text('排便量（必选）'), findsNothing);
+    await tester.ensureVisible(find.text('保存今天的记录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存今天的记录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认'));
+    await waitFor(tester, find.text('确认未排便'));
+    expect((await tester.runAsync(app.todayRecords))!, isEmpty);
+    await tester.tap(find.byIcon(Icons.arrow_back).first);
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('记录今天'));
+    await waitFor(tester, find.textContaining('2026年11月概览'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('同号导入仅提供独立导入和跳过', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
@@ -142,16 +208,16 @@ void main() {
     addTearDown(() => tester.runAsync(app.close));
     await tester.runAsync(() async {
       await app.createProfile('13800138000');
-      await app.saveToday('顺畅', '9');
+      await app.saveToday('顺畅', '4');
     });
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.text('记录今天'));
     await tester.drag(find.byType(ListView).first, const Offset(0, -500));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('排便量分布'));
-    await tester.ensureVisible(find.text('💩 × 9'));
+    await tester.ensureVisible(find.text('💩 × 4'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('💩 × 9'));
+    await tester.tap(find.text('💩 × 4'));
     await tester.pumpAndSettle();
     expect(find.text('1次 · 100.0%'), findsOneWidget);
     await tester.tap(find.text('关闭'));
@@ -196,44 +262,6 @@ void main() {
     await waitFor(tester, find.text('创建本地用户档案'));
   });
 
-  testWidgets('自定义数值仅本次填写，不增加快捷项', (tester) async {
-    sqfliteFfiInit();
-    final app = (await tester.runAsync(
-      () => Business.open(
-        inMemoryDatabasePath,
-        factory: databaseFactoryFfi,
-        now: () => DateTime(2026, 11, 9, 12),
-      ),
-    ))!;
-    addTearDown(() => tester.runAsync(app.close));
-    await tester.runAsync(() => app.createProfile('13800138000'));
-    await tester.pumpWidget(PoopTodayApp(business: app));
-    await waitFor(tester, find.text('记录今天'));
-    await tester.tap(find.text('记录今天'));
-    await tester.pumpAndSettle();
-    await waitFor(tester, find.text('😊 顺畅'));
-    await tester.tap(find.text('😊 顺畅'));
-    final input = find.widgetWithText(TextField, '自定义排便量（1～99）');
-    await tester.ensureVisible(input);
-    await tester.enterText(input, '9');
-    await tester.ensureVisible(find.text('保存今天的记录'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('保存今天的记录'));
-    await waitFor(tester, find.text('顺畅 · 💩 × 9'));
-    expect(
-      (await tester.runAsync(app.todayRecords))!.single['amount_value'],
-      9,
-    );
-    expect(tester.widgetList<ChoiceChip>(find.byType(ChoiceChip)).length, 6);
-    expect(
-      tester
-          .widgetList<ChoiceChip>(find.byType(ChoiceChip))
-          .every((chip) => !chip.selected),
-      isTrue,
-    );
-    expect(find.text('新增选项'), findsNothing);
-  });
-
   testWidgets('确认未排便可取消，点击与完整侧滑直接删除', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
@@ -251,11 +279,14 @@ void main() {
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.text('记录今天'));
     await tester.tap(find.text('记录今天'));
+    await waitFor(tester, find.text('是否排便（必选）'));
     await tester.pumpAndSettle();
-    await waitFor(tester, find.text('确认当天未排便'));
-    await tester.ensureVisible(find.text('确认当天未排便'));
+    await waitFor(tester, find.text('❌'));
+    await tester.tap(find.text('❌'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('确认当天未排便'));
+    await tester.ensureVisible(find.text('保存今天的记录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存今天的记录'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
@@ -270,8 +301,11 @@ void main() {
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.text('记录今天'));
     await tester.tap(find.text('记录今天'));
+    await waitFor(tester, find.text('是否排便（必选）'));
     await tester.pumpAndSettle();
-    await waitFor(tester, find.text('确认当天未排便'));
+    await waitFor(tester, find.text('❌'));
+    await tester.tap(find.text('❌'));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.byType(Dismissible),
       200,
@@ -289,11 +323,14 @@ void main() {
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.text('记录今天'));
     await tester.tap(find.text('记录今天'));
+    await waitFor(tester, find.text('是否排便（必选）'));
     await tester.pumpAndSettle();
-    await waitFor(tester, find.text('确认当天未排便'));
-    await tester.ensureVisible(find.text('确认当天未排便'));
+    await waitFor(tester, find.text('❌'));
+    await tester.tap(find.text('❌'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('确认当天未排便'));
+    await tester.ensureVisible(find.text('保存今天的记录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存今天的记录'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认'));
     await waitFor(tester, find.text('确认未排便'));
@@ -317,11 +354,15 @@ void main() {
       await tester.runAsync(() => dir.delete(recursive: true));
     });
     await tester.pumpWidget(PoopTodayApp(business: app));
-    await waitFor(tester, find.byType(TextField));
-    await tester.enterText(find.byType(TextField), '13800138000');
+    await waitFor(tester, find.widgetWithText(TextField, '手机号'));
+    await tester.enterText(
+      find.widgetWithText(TextField, '手机号'),
+      '13800138000',
+    );
     await tester.tap(find.text('创建档案'));
     await waitFor(tester, find.text('记录今天'));
     await tester.tap(find.text('记录今天'));
+    await waitFor(tester, find.text('是否排便（必选）'));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('保存今天的记录'));
     expect(
@@ -333,7 +374,10 @@ void main() {
     await tester.ensureVisible(find.text('保存今天的记录'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存今天的记录'));
-    await waitFor(tester, find.text('请选择排便通畅度和排便量'));
+    await waitFor(tester, find.text('请选择是否排便'));
+    await tester.ensureVisible(find.text('✅'));
+    await tester.tap(find.text('✅'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('😊 顺畅'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('😊 顺畅'));

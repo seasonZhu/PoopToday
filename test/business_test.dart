@@ -35,12 +35,12 @@ void main() {
           date: '2026-11-09',
           time: '12:01',
           ease: '一般',
-          amount: '5',
+          amount: '4',
         ),
         throwsArgumentError,
       );
       await expectLater(
-        app.saveRecord(date: '2026-11-10', ease: '一般', amount: '5'),
+        app.saveRecord(date: '2026-11-10', ease: '一般', amount: '4'),
         throwsArgumentError,
       );
       await app.close();
@@ -72,16 +72,17 @@ void main() {
       await expectLater(app.saveToday(null, '3'), throwsArgumentError);
       await expectLater(app.saveToday('顺畅', null), throwsArgumentError);
       expect(await app.todayRecords(), isEmpty);
-      await app.saveToday('顺畅', '99');
+      await app.saveToday('顺畅', '4');
+      await expectLater(app.saveToday('顺畅', '5'), throwsArgumentError);
       await expectLater(app.saveToday('顺畅', '100'), throwsArgumentError);
       await expectLater(app.saveToday('顺畅', '0'), throwsArgumentError);
       await app.close();
       app = await Business.open(path, factory: databaseFactoryFfi, now: now);
       expect(await app.phone(), '13800138000');
       final records = await app.todayRecords();
-      expect(records.single['amount_value'], 99);
+      expect(records.single['amount_value'], 4);
       expect(records.single['date'], '2026-11-09');
-      await app.saveToday('顺畅', '99');
+      await app.saveToday('顺畅', '4');
       expect((await app.todayRecords()).length, 2);
       await expectLater(app.createProfile('13800138000'), throwsArgumentError);
       expect(records.single['ease_name'], '顺畅');

@@ -32,7 +32,7 @@ void main() {
             id: record['id'] as String,
             date: '2026-11-08',
             time: '09:30',
-            amount: '5',
+            amount: '4',
           );
           final edited = (await app.recordsForDate('2026-11-08')).single;
           expect(edited['utc_offset_minutes'], -300);

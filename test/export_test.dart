@@ -20,7 +20,7 @@ void main() {
       date: '2026-11-08',
       time: '10:00',
       ease: '顺畅',
-      amount: '9',
+      amount: '4',
     );
     await app.deleteRecord(
       (await app.recordsForDate('2026-11-08')).single['id'] as String,
@@ -34,7 +34,7 @@ void main() {
       'modified_at',
       'deleted',
     });
-    expect(data['records'].single['amount_value'], 9);
+    expect(data['records'].single['amount_value'], 4);
     expect(data['records'].single['deleted'], 1);
     expect(data['records'].single['local_time'], '10:00');
     expect(data['no_poop'].single['date'], '2026-11-09');

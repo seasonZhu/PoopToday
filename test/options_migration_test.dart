@@ -106,12 +106,12 @@ void main() {
           id: '一小点',
           date: '2026-11-08',
           ease: '一般',
-          amount: '9',
+          amount: '4',
         );
         edited = (await app.recordsForDate('2026-11-08'))
             .firstWhere((r) => r['id'] == '一小点');
         expect(edited['ease_name'], '一般');
-        expect(edited['amount_value'], 9);
+        expect(edited['amount_value'], 4);
         for (final invalid in ['0', '100', '-1', '1.5', '01', '很多']) {
           await expectLater(app.saveToday('顺畅', invalid), throwsArgumentError);
         }

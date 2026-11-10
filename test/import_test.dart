@@ -79,7 +79,7 @@ void main() {
     expect((await app.dailyCounts())[app.today], 1);
     final preview = await app.previewImport(noPoop);
     expect(preview.cleared, 1);
-    await app.saveToday('一般', '5');
+    await app.saveToday('一般', '4');
     await expectLater(app.applyImport(preview), throwsStateError);
     expect(await app.todayRecords(), hasLength(2));
     await app.applyImport(await app.previewImport(noPoop));

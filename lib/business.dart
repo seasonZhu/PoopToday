@@ -10,7 +10,7 @@ class Business {
   final Database _db;
   final DateTime Function() now;
   static const easeOptions = ['困难', '一般', '顺畅'];
-  static const amountOptions = ['1', '3', '5'];
+  static const amountOptions = ['1', '2', '3', '4'];
 
   static String easeCategory(Map<String, Object?> record) {
     final name = record['ease_name'];
@@ -243,7 +243,7 @@ class Business {
       if ((ease == null && old == null) ||
           (amount == null && old == null) ||
           (ease != null && !easeOptions.contains(ease)) ||
-          (amount != null && !RegExp(r'^[1-9][0-9]?$').hasMatch(amount))) {
+          (amount != null && !RegExp(r'^[1-4]$').hasMatch(amount))) {
         throw ArgumentError('请选择排便通畅度和排便量');
       }
       final timestamp = current.toUtc().toIso8601String();

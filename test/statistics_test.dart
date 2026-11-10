@@ -12,7 +12,7 @@ void main() {
     );
     addTearDown(app.close);
     await app.createProfile('13800138000');
-    await app.saveRecord(date: '2026-11-01', ease: '顺畅', amount: '9');
+    await app.saveRecord(date: '2026-11-01', ease: '顺畅', amount: '4');
     await app.saveRecord(date: '2026-11-01', ease: '困难', amount: '3');
     await app.confirmNoPoop('2026-11-02');
     final month = await app.statistics(
@@ -23,7 +23,7 @@ void main() {
     expect(month.recordedDays, 1);
     expect(month.confirmedDays, 1);
     expect(month.unfilledDays, 7);
-    expect(month.amount.keys, ['3', '9']);
+    expect(month.amount.keys, ['3', '4']);
     final week = await app.statistics(
       DateTime(2026, 10, 26),
       DateTime(2026, 11, 1),
