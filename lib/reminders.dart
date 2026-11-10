@@ -13,6 +13,17 @@ abstract interface class NotificationAdapter {
   Future<void> replace(List<ReminderNotification> notifications);
 }
 
+abstract interface class PreciseNotificationAdapter {
+  /// 非 Android 平台返回 null。
+  Future<bool?> precisePermission();
+}
+
+abstract interface class AndroidReminderSettings {
+  Future<bool?> backgroundAllowed();
+  Future<void> openBackgroundSettings();
+  Future<void> openBannerSettings();
+}
+
 class ReminderService {
   ReminderService(this.business, this.adapter);
   final Business business;

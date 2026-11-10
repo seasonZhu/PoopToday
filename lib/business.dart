@@ -43,7 +43,9 @@ class Business {
             await db.execute(
               'CREATE TABLE profiles_new (id TEXT PRIMARY KEY, phone TEXT NOT NULL, version INTEGER NOT NULL, modified_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, nickname TEXT)',
             );
-            await db.execute('INSERT INTO profiles_new (id, phone, version, modified_at, deleted) SELECT id, phone, version, modified_at, deleted FROM profiles');
+            await db.execute(
+              'INSERT INTO profiles_new (id, phone, version, modified_at, deleted) SELECT id, phone, version, modified_at, deleted FROM profiles',
+            );
             await db.execute('DROP TABLE profiles');
             await db.execute('ALTER TABLE profiles_new RENAME TO profiles');
             await db.execute(
@@ -476,6 +478,7 @@ class Business {
   Future<ImportPreview> previewImport(
     String source, {
     Set<String> skippedProfileIds = const {},
+    bool preferLocal = false,
   }) async {
     final data = jsonDecode(source);
     if (data is! Map || data['format_version'] != 1) {
@@ -511,7 +514,14 @@ class Business {
       '备份时间或时区无效',
     );
     const columns = {
-      'profiles': {'id', 'phone', 'nickname', 'version', 'modified_at', 'deleted'},
+      'profiles': {
+        'id',
+        'phone',
+        'nickname',
+        'version',
+        'modified_at',
+        'deleted',
+      },
       'records': {
         'id',
         'profile_id',
@@ -627,6 +637,57 @@ class Business {
         rows[table] = List<Map<String, Object?>>.from(filtered[table] as List);
       }
 
+      final localProfiles = await txn.query('profiles', where: 'deleted = 0');
+      final profileMapping = <String, String>{};
+      for (final row in rows['profiles']!) {
+        final matches = localProfiles
+            .where(
+              (local) =>
+                  local['id'] == row['id'] ||
+                  (row['deleted'] == 0 && local['phone'] == row['phone']),
+            )
+            .toList();
+        if (matches.isEmpty) continue;
+        final local = matches.firstWhere(
+          (local) => local['id'] == row['id'],
+          orElse: () => matches.first,
+        );
+        profileMapping[row['id'] as String] = local['id'] as String;
+        row['id'] = local['id'];
+        if (preferLocal) row.addAll(local);
+      }
+      for (final table in ['records', 'no_poop']) {
+        final retained = <Map<String, Object?>>[];
+        for (final row in rows[table]!) {
+          row['profile_id'] =
+              profileMapping[row['profile_id']] ?? row['profile_id'];
+          if (preferLocal) {
+            final sameRecord = table == 'records'
+                ? await txn.query(
+                    'records',
+                    where: 'id = ?',
+                    whereArgs: [row['id']],
+                  )
+                : <Map<String, Object?>>[];
+            final opposite = await txn.query(
+              table == 'records' ? 'no_poop' : 'records',
+              where:
+                  'profile_id = ? AND date = ?${table == 'no_poop' ? ' AND deleted = 0' : ''}',
+              whereArgs: [row['profile_id'], row['date']],
+            );
+            if (sameRecord.isNotEmpty || opposite.isNotEmpty) {
+              skipped++;
+              continue;
+            }
+          }
+          retained.add(row);
+        }
+        rows[table] = retained;
+      }
+      for (final table in rows.keys) {
+        filtered[table] = rows[table];
+      }
+
       for (final table in rows.keys) {
         for (final row in rows[table]!) {
           final where = table == 'no_poop'
@@ -729,13 +790,19 @@ class Business {
   }
 
   Future<String?> localSetting(String key) async {
-    final rows = await _db.query('settings', where: 'key = ?', whereArgs: [key]);
+    final rows = await _db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: [key],
+    );
     return rows.isEmpty ? null : rows.single['value'] as String?;
   }
 
   Future<void> saveLocalSetting(String key, String value) async {
-    await _db.insert('settings', {'key': key, 'value': value},
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await _db.insert('settings', {
+      'key': key,
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> close() => _db.close();

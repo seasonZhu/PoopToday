@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -61,56 +62,46 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
     if (!await discard()) return;
     setState(() => importing = true);
     try {
+      final isAndroid = defaultTargetPlatform == TargetPlatform.android;
       final file = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
+        dialogTitle: '从下载或手机存储中选择 JSON 备份文件',
+        // Android 文件提供器可能将 JSON 标记为文本或未知类型。
+        // 选择后仍通过 previewImport 完整校验备份内容。
+        type: isAndroid ? FileType.any : FileType.custom,
+        allowedExtensions: isAndroid ? null : ['json'],
       );
       if (file == null) return;
       final source = utf8.decode(await file.readAsBytes());
-      final skippedProfileIds = <String>{};
-      final decoded = jsonDecode(source);
-      // 先完整校验文件，再展示同号档案选择。
       await widget.business.previewImport(source);
-      final localProfiles = await widget.business.profiles();
-      for (final raw in decoded['profiles'] as List) {
-        final id = raw['id'] as String;
-        if (raw['deleted'] == 0 &&
-            localProfiles.any(
-              (p) => p['phone'] == raw['phone'] && p['id'] != id,
-            ) &&
-            !localProfiles.any((p) => p['id'] == id)) {
-          if (!mounted) return;
-          final independent = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('同号独立档案'),
-              content: Text(
-                '${raw['phone']} · ${id.length > 8 ? id.substring(0, 8) : id}\n手机号相同但 UID 不同，所属数据将保持独立。',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('跳过'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('独立导入'),
-                ),
-              ],
+      if (!mounted) return;
+      final preferLocal = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('选择合并方式'),
+          content: const Text(
+            '同手机号将合并为一个档案，保留本机 UID 和双方独有记录。记录或当天状态冲突时，请选择优先使用哪一方，昵称也按此选择。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('本机优先'),
             ),
-          );
-          if (independent == null) return;
-          if (!independent) skippedProfileIds.add(id);
-        }
-      }
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('导入优先'),
+            ),
+          ],
+        ),
+      );
+      if (preferLocal == null) return;
       while (mounted) {
         final preview = await widget.business.previewImport(
           source,
-          skippedProfileIds: skippedProfileIds,
+          preferLocal: preferLocal,
         );
         if (!mounted) return;
         if (!await confirm(
-          '导入内容优先，可能覆盖修改或恢复已删除记录。\n新增 ${preview.added}／覆盖 ${preview.overwritten}／恢复 ${preview.restored}／跳过 ${preview.skipped}\n日期清空影响：${preview.cleared} 条记录。是否导入？',
+          '${preferLocal ? '本机内容优先' : '导入内容优先，可能覆盖修改或恢复已删除记录'}。\n新增 ${preview.added}／覆盖 ${preview.overwritten}／恢复 ${preview.restored}／跳过 ${preview.skipped}\n日期清空影响：${preview.cleared} 条记录。是否导入？',
         )) {
           return;
         }
@@ -485,9 +476,17 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
       });
       await refresh();
     } on ArgumentError catch (e) {
-      if (mounted) setState(() => error = e.message.toString());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message.toString())),
+        );
+      }
     } catch (_) {
-      if (mounted) setState(() => error = '档案操作失败，请重试');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('档案操作失败，请重试')),
+        );
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -557,6 +556,11 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
               children: [
                 if (phone == null) ...[
                   const Text('创建本地用户档案', style: TextStyle(fontSize: 24)),
+                  TextButton.icon(
+                    onPressed: importing ? null : importBackup,
+                    icon: const Icon(Icons.file_open_outlined),
+                    label: Text(importing ? '正在导入…' : '导入旧数据'),
+                  ),
                   TextField(
                     controller: nicknameController,
                     decoration: const InputDecoration(labelText: '昵称（选填）'),
@@ -595,7 +599,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
                   ),
                   if (calendarHome) ...[
                     const SizedBox(height: 20),
-                    const Text('✅ 已排便 · ❌ 确认未排便 · 留空尚未填写'),
+                    const Text('✅ 拉了 · ❌ 没拉'),
                     const SizedBox(height: 20),
                   ],
                   if (calendarHome)

@@ -6,43 +6,41 @@ import 'package:poop_today/business.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
-  test('同号档案可跳过所属数据或独立恢复且重复导入幂等', () async {
-    sqfliteFfiInit();
-    final source = await Business.open(
-      inMemoryDatabasePath,
-      factory: databaseFactoryFfi,
-    );
-    final dir = await Directory.systemTemp.createTemp('independent-');
-    final target = await Business.open(
-      '${dir.path}/target.db',
-      factory: databaseFactoryFfi,
-    );
-    addTearDown(() async {
-      await source.close();
-      await target.close();
-      await dir.delete(recursive: true);
+  for (final preferLocal in [true, false]) {
+    test('同号合并保留本机 UID，覆盖方向 $preferLocal 且重复导入幂等', () async {
+      sqfliteFfiInit();
+      final dir = await Directory.systemTemp.createTemp('merge-');
+      final source = await Business.open(
+        '${dir.path}/source.db',
+        factory: databaseFactoryFfi,
+      );
+      final target = await Business.open(
+        '${dir.path}/target.db',
+        factory: databaseFactoryFfi,
+      );
+      addTearDown(() async {
+        await source.close();
+        await target.close();
+        await dir.delete(recursive: true);
+      });
+      await source.createProfile('13800138000');
+      await source.saveToday('顺畅', '3');
+      await target.createProfile('13800138000');
+      final localId = (await target.profiles()).single['id'];
+      await target.confirmNoPoop(target.today);
+      final backup = await source.exportBackup();
+      await target.applyImport(
+        await target.previewImport(backup, preferLocal: preferLocal),
+      );
+      expect((await target.profiles()).single['id'], localId);
+      expect(await target.todayRecords(), hasLength(preferLocal ? 0 : 1));
+      await target.applyImport(
+        await target.previewImport(backup, preferLocal: preferLocal),
+      );
+      expect(await target.profiles(), hasLength(1));
+      expect(await target.todayRecords(), hasLength(preferLocal ? 0 : 1));
     });
-    await source.createProfile('13800138000');
-    await source.saveToday('顺畅', '3');
-    await target.createProfile('13800138000');
-    final backup = await source.exportBackup();
-    final id = (await source.profiles()).single['id'] as String;
-    final skipped = await target.previewImport(backup, skippedProfileIds: {id});
-    expect(skipped.skipped, 2);
-    await target.applyImport(skipped);
-    expect(await target.profiles(), hasLength(1));
-    await target.applyImport(await target.previewImport(backup));
-    expect(await target.profiles(), hasLength(2));
-    expect((await target.previewImport(backup)).skipped, 2);
-    expect(await target.todayRecords(), isEmpty);
-    await target.selectProfile(id);
-    expect(await target.todayRecords(), hasLength(1));
-    await target.deleteProfile();
-    await target.applyImport(await target.previewImport(backup));
-    await target.selectProfile(id);
-    expect(await target.todayRecords(), hasLength(1));
-    expect(await target.profiles(), hasLength(2));
-  });
+  }
   test('导入恢复删除记录且重复导入跳过', () async {
     sqfliteFfiInit();
     final app = await Business.open(

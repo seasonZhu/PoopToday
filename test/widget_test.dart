@@ -23,6 +23,30 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('空白设备可从建档页面导入旧数据', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(inMemoryDatabasePath, factory: databaseFactoryFfi),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() => app.createProfile('13800138000', nickname: '旧昵称'));
+    final backup = (await tester.runAsync(app.exportBackup))!;
+    final id = (await tester.runAsync(app.profiles))!.single['id'];
+    await tester.runAsync(app.deleteProfile);
+    final original = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = ImportPicker(backup);
+    addTearDown(() => FilePickerPlatform.instance = original);
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('导入旧数据'));
+    await tester.tap(find.text('导入旧数据'));
+    await waitFor(tester, find.text('选择合并方式'));
+    await tester.tap(find.text('导入优先'));
+    await waitFor(tester, find.textContaining('是否导入'));
+    await tester.tap(find.text('确认'));
+    await waitFor(tester, find.text('旧昵称'));
+    expect((await tester.runAsync(app.profiles))!.single['id'], id);
+  });
+
   testWidgets('日历按日期展示三态且不显示次数', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -132,7 +156,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('同号导入仅提供独立导入和跳过', (tester) async {
+  testWidgets('同号导入选择覆盖方向并合并档案', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
       () => Business.open(inMemoryDatabasePath, factory: databaseFactoryFfi),
@@ -147,12 +171,10 @@ void main() {
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.text('记录今天'));
     await tester.tap(find.byTooltip('导入备份'));
-    await waitFor(tester, find.text('同号独立档案'));
-    expect(find.text('独立导入'), findsOneWidget);
-    expect(find.text('跳过'), findsOneWidget);
-    await tester.tap(find.text('跳过'));
+    await waitFor(tester, find.text('选择合并方式'));
+    expect(find.text('本机优先'), findsOneWidget);
+    await tester.tap(find.text('导入优先'));
     await waitFor(tester, find.textContaining('导入内容优先'));
-    expect(find.textContaining('跳过 1'), findsOneWidget);
     await tester.tap(find.text('确认'));
     await tester.pumpAndSettle();
     await tester.runAsync(
@@ -177,12 +199,16 @@ void main() {
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.text('记录今天'));
     await tester.tap(find.byTooltip('导入备份'));
+    await waitFor(tester, find.text('选择合并方式'));
+    await tester.tap(find.text('导入优先'));
     await waitFor(tester, find.textContaining('导入内容优先'));
     expect(find.textContaining('覆盖 1'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(await tester.runAsync(app.phone), '13900139000');
     await tester.tap(find.byTooltip('导入备份'));
+    await waitFor(tester, find.text('选择合并方式'));
+    await tester.tap(find.text('导入优先'));
     await waitFor(tester, find.textContaining('导入内容优先'));
     await tester.runAsync(() => app.updatePhone('13700137000'));
     await tester.tap(find.text('确认'));
