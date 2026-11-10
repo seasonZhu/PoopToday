@@ -91,6 +91,7 @@ class _RecordPageState extends State<RecordPage> {
       final source = utf8.decode(await file.readAsBytes());
       while (mounted) {
         final preview = await widget.business.previewImport(source);
+        if (!mounted) return;
         if (!await confirm(
           '导入内容优先，可能覆盖修改或恢复已删除记录。\n新增 ${preview.added}／覆盖 ${preview.overwritten}／恢复 ${preview.restored}／跳过 ${preview.skipped}\n日期清空影响：${preview.cleared} 条记录。是否导入？',
         )) {

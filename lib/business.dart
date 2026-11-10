@@ -519,8 +519,9 @@ class Business {
     for (final table in rows.keys) {
       for (final row in rows[table]!) {
         final required = {...columns[table]!};
-        if (table == 'profiles' && row['deleted'] == 1)
+        if (table == 'profiles' && row['deleted'] == 1) {
           required.remove('phone');
+        }
         require(
           required.every(row.containsKey) &&
               row.keys.every(columns[table]!.contains),
