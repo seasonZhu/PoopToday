@@ -71,7 +71,7 @@ class PlatformNotifications implements NotificationAdapter {
       final at = notification.at;
       await plugin.zonedSchedule(
         i,
-        '今天排便了吗',
+        '拉💩了冒',
         '点击填写或查看今天的记录',
         tz.TZDateTime(location, at.year, at.month, at.day, at.hour, at.minute),
         const NotificationDetails(

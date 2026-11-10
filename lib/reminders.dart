@@ -33,7 +33,8 @@ class ReminderService {
   }
 
   Future<void> saveTimes(List<int> values) async {
-    if (values.any((v) => v < 0 || v >= 1440) ||
+    if (values.length > 4 ||
+        values.any((v) => v < 0 || v >= 1440) ||
         values.toSet().length != values.length) {
       throw ArgumentError('提醒时间不可重复且必须是有效当地时间');
     }

@@ -1,3 +1,5 @@
+import 'time_picker.dart';
+
 import 'package:flutter/material.dart';
 
 import 'reminders.dart';
@@ -77,7 +79,7 @@ class _ReminderSettingsState extends State<ReminderSettings>
   }
 
   Future<void> editTime([int? old]) async {
-    final picked = await showTimePicker(
+    final picked = await showWheelTimePicker(
       context: context,
       initialTime: old == null
           ? TimeOfDay.now()
@@ -95,7 +97,7 @@ class _ReminderSettingsState extends State<ReminderSettings>
       if (mounted) setState(() => message = null);
       await load();
     } on ArgumentError {
-      if (mounted) setState(() => message = '提醒时间不可重复');
+      if (mounted) setState(() => message = '最多设置4个提醒时间，且时间不可重复');
     } catch (_) {
       if (mounted) setState(() => message = '提醒设置失败，请重试');
     } finally {
@@ -137,9 +139,11 @@ class _ReminderSettingsState extends State<ReminderSettings>
             ),
           ),
         TextButton.icon(
-          onPressed: busy || widget.service == null ? null : editTime,
+          onPressed: busy || widget.service == null || times.length >= 4
+              ? null
+              : editTime,
           icon: const Icon(Icons.add),
-          label: const Text('新增提醒时间'),
+          label: Text('新增提醒时间（${times.length}/4）'),
         ),
         if (message != null)
           Padding(
