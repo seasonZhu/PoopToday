@@ -728,6 +728,16 @@ class Business {
     });
   }
 
+  Future<String?> localSetting(String key) async {
+    final rows = await _db.query('settings', where: 'key = ?', whereArgs: [key]);
+    return rows.isEmpty ? null : rows.single['value'] as String?;
+  }
+
+  Future<void> saveLocalSetting(String key, String value) async {
+    await _db.insert('settings', {'key': key, 'value': value},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   Future<void> close() => _db.close();
 }
 

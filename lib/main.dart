@@ -8,6 +8,12 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
 import 'business.dart';
+import 'reminders.dart';
+import 'platform_notifications.dart';
+import 'reminder_settings.dart';
+
+ReminderService? reminders;
+final reminderNavigator = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,7 +21,24 @@ Future<void> main() async {
     final business = await Business.open(
       path.join(await getDatabasesPath(), 'poop_today.db'),
     );
+    final platform = PlatformNotifications();
+    String? pendingProfile;
+    try {
+      await platform.initialize((profileId) {
+        if (reminderNavigator.currentState == null) {
+          pendingProfile = profileId;
+        } else {
+          openReminder(business, profileId);
+        }
+      });
+      reminders = ReminderService(business, platform);
+    } catch (_) {
+      reminders = null;
+    }
     runApp(PoopTodayApp(business: business));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (pendingProfile != null) openReminder(business, pendingProfile!);
+    });
   } catch (_) {
     runApp(
       const MaterialApp(
@@ -25,11 +48,24 @@ Future<void> main() async {
   }
 }
 
+Future<void> openReminder(Business business, String profileId) async {
+  try {
+    await business.selectProfile(profileId);
+    await reminders?.reconcile();
+    reminderNavigator.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => RecordPage(business: business, date: business.today)),
+      (route) => route.isFirst);
+  } catch (_) {
+    // 已删除档案的旧通知不跳转。
+  }
+}
+
 class PoopTodayApp extends StatelessWidget {
   const PoopTodayApp({super.key, required this.business});
   final Business business;
   @override
   Widget build(BuildContext context) => MaterialApp(
+    navigatorKey: reminderNavigator,
     locale: const Locale('zh', 'CN'),
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     supportedLocales: const [Locale('zh', 'CN')],
@@ -258,6 +294,11 @@ class _RecordPageState extends State<RecordPage> {
 
   Future<void> refresh() async {
     try {
+      try {
+        if (identical(reminders?.business, widget.business)) await reminders?.reconcile();
+      } catch (_) {
+        // 通知失败不阻断记录数据加载，设置页可重试。
+      }
       final currentPhone = await widget.business.phone();
       final active = await widget.business.activeProfile();
       final currentRecords = await widget.business.recordsForDate(selectedDate);
@@ -425,7 +466,7 @@ class _RecordPageState extends State<RecordPage> {
                 title: const Text('导出备份'),
                 onTap: () => Navigator.pop(context, '导出备份'),
               ),
-              ListTile(title: const Text('推送设置'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => Scaffold(appBar: AppBar(title: const Text('推送设置')), body: const Center(child: Text('填写提醒即将开放')))))),
+              ListTile(title: const Text('推送设置'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => ReminderSettings(service: reminders)))),
             ],
           ),
         ),
