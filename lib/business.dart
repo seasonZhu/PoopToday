@@ -461,7 +461,10 @@ class Business {
       table: await txn.query(table, orderBy: 'rowid'),
   });
 
-  Future<ImportPreview> previewImport(String source) async {
+  Future<ImportPreview> previewImport(
+    String source, {
+    Set<String> skippedProfileIds = const {},
+  }) async {
     final data = jsonDecode(source);
     if (data is! Map || data['format_version'] != 1) {
       throw const FormatException('不支持的备份版本，请先使用原版本升级并重新导出');
@@ -596,6 +599,19 @@ class Business {
     }
     return _db.transaction((txn) async {
       var added = 0, overwritten = 0, restored = 0, skipped = 0, cleared = 0;
+      final filtered = <String, dynamic>{...data};
+      for (final table in rows.keys) {
+        filtered[table] = rows[table]!
+            .where(
+              (row) => !skippedProfileIds.contains(
+                row[table == 'profiles' ? 'id' : 'profile_id'],
+              ),
+            )
+            .toList();
+        skipped += rows[table]!.length - (filtered[table] as List).length;
+        rows[table] = List<Map<String, Object?>>.from(filtered[table] as List);
+      }
+
       for (final table in rows.keys) {
         for (final row in rows[table]!) {
           final where = table == 'no_poop'
@@ -625,7 +641,7 @@ class Business {
         }
       }
       return ImportPreview._(
-        source,
+        jsonEncode(filtered),
         await _importSnapshot(txn),
         added,
         overwritten,

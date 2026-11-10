@@ -23,6 +23,36 @@ Future<void> waitFor(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('同号导入仅提供独立导入和跳过', (tester) async {
+    sqfliteFfiInit();
+    final app = (await tester.runAsync(
+      () => Business.open(inMemoryDatabasePath, factory: databaseFactoryFfi),
+    ))!;
+    addTearDown(() => tester.runAsync(app.close));
+    await tester.runAsync(() => app.createProfile('13800138000'));
+    final data = jsonDecode((await tester.runAsync(app.exportBackup))!);
+    data['profiles'][0]['id'] = 'independent-profile';
+    final original = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = ImportPicker(jsonEncode(data));
+    addTearDown(() => FilePickerPlatform.instance = original);
+    await tester.pumpWidget(PoopTodayApp(business: app));
+    await waitFor(tester, find.text('记录今天'));
+    await tester.tap(find.byTooltip('导入备份'));
+    await waitFor(tester, find.text('同号独立档案'));
+    expect(find.text('独立导入'), findsOneWidget);
+    expect(find.text('跳过'), findsOneWidget);
+    await tester.tap(find.text('跳过'));
+    await waitFor(tester, find.textContaining('导入内容优先'));
+    expect(find.textContaining('跳过 1'), findsOneWidget);
+    await tester.tap(find.text('确认'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+    expect(await tester.runAsync(app.profiles), hasLength(1));
+  });
+
   testWidgets('导入预览取消不写入，本机变化后再次确认', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(

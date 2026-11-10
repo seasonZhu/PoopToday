@@ -89,8 +89,47 @@ class _RecordPageState extends State<RecordPage> {
       );
       if (file == null) return;
       final source = utf8.decode(await file.readAsBytes());
+      final skippedProfileIds = <String>{};
+      final decoded = jsonDecode(source);
+      // 先完整校验文件，再展示同号档案选择。
+      await widget.business.previewImport(source);
+      final localProfiles = await widget.business.profiles();
+      for (final raw in decoded['profiles'] as List) {
+        final id = raw['id'] as String;
+        if (raw['deleted'] == 0 &&
+            localProfiles.any(
+              (p) => p['phone'] == raw['phone'] && p['id'] != id,
+            ) &&
+            !localProfiles.any((p) => p['id'] == id)) {
+          if (!mounted) return;
+          final independent = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('同号独立档案'),
+              content: Text(
+                '${raw['phone']} · ${id.length > 8 ? id.substring(0, 8) : id}\n手机号相同但 UID 不同，所属数据将保持独立。',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('跳过'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('独立导入'),
+                ),
+              ],
+            ),
+          );
+          if (independent == null) return;
+          if (!independent) skippedProfileIds.add(id);
+        }
+      }
       while (mounted) {
-        final preview = await widget.business.previewImport(source);
+        final preview = await widget.business.previewImport(
+          source,
+          skippedProfileIds: skippedProfileIds,
+        );
         if (!mounted) return;
         if (!await confirm(
           '导入内容优先，可能覆盖修改或恢复已删除记录。\n新增 ${preview.added}／覆盖 ${preview.overwritten}／恢复 ${preview.restored}／跳过 ${preview.skipped}\n日期清空影响：${preview.cleared} 条记录。是否导入？',
@@ -320,7 +359,7 @@ class _RecordPageState extends State<RecordPage> {
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, profile['id'] as String),
               child: Text(
-                '${profile['phone']}${profiles.where((p) => p['phone'] == profile['phone']).length > 1 ? ' · ${(profile['id'] as String).substring(0, 8)}' : ''}',
+                '${profile['phone']}${profiles.where((p) => p['phone'] == profile['phone']).length > 1 ? ' · ${(profile['id'] as String).substring(0, (profile['id'] as String).length.clamp(0, 8))}' : ''}',
               ),
             ),
           for (final action in ['新增档案', '修改手机号', '删除档案'])
