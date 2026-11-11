@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+
 jobs:
   flutter-checks:
     name: 静态分析与测试
