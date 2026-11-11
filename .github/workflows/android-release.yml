@@ -74,15 +74,17 @@ jobs:
           config.chmod(0o600)
           PY
       - name: 构建 Release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64
       - name: 验证 APK 签名并整理产物
         run: |
-          APK=build/app/outputs/flutter-apk/app-release.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
           VERSION=$(sed -n 's/^version: *\([^ ]*\).*/\1/p' pubspec.yaml)
           mkdir -p dist
-          cp "$APK" "dist/PoopToday-$VERSION.apk"
+          for ABI in arm64-v8a armeabi-v7a; do
+            APK="build/app/outputs/flutter-apk/app-$ABI-release.apk"
+            "$APKSIGNER" verify --verbose --print-certs "$APK"
+            cp "$APK" "dist/PoopToday-$VERSION-$ABI.apk"
+          done
           cd dist
           sha256sum ./*.apk > SHA256SUMS.txt
       - name: 上传安装包
