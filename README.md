@@ -19,3 +19,7 @@
 ## iOS 自测
 
 已按追加需求建立 iOS 工程，无签名 Debug 编译通过。使用 Xcode 打开 `ios/Runner.xcworkspace`，选择自己的开发团队和设备后运行。实际交互与真机重启由用户验收。
+
+## 许可证
+
+本项目源码采用 [PolyForm Noncommercial License 1.0.0](LICENSE.md)，许可证标识为 `PolyForm-Noncommercial-1.0.0`。允许的使用、修改及再分发范围以许可证全文为准，商业使用需另行取得授权。第三方依赖及资源遵循各自的许可证。
