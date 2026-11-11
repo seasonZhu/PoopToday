@@ -58,6 +58,10 @@ class _ProfileSettingsState extends State<ProfileSettings> {
               onTap: () async {
                 await widget.onAction(action);
                 profiles = await widget.business.profiles();
+                if (profiles.isEmpty && context.mounted) {
+                  Navigator.of(context).pop();
+                  return;
+                }
                 if (context.mounted) updateSettings(() {});
               },
             ),
