@@ -1,0 +1,121 @@
+name: Android 发布
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 检查并构建签名 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: 获取代码
+        uses: actions/checkout@v6
+      - name: 安装 Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: stable
+          cache: true
+      - name: 校验版本标签
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION=$(sed -n 's/^version: *\([^+ ]*\).*/\1/p' pubspec.yaml)
+          test "$RELEASE_TAG" = "v$VERSION" || { echo 'Tag 必须与 pubspec.yaml 中的版本一致'; exit 1; }
+      - name: 安装系统 SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-0
+      - name: 安装依赖
+        run: flutter pub get --enforce-lockfile
+      - name: 静态分析
+        run: flutter analyze
+      - name: 自动化测试
+        run: flutter test --timeout 180s
+      - name: 配置发布签名
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          names = ['KEYSTORE_BASE64', 'STORE_PASSWORD', 'KEY_PASSWORD', 'KEY_ALIAS']
+          if any(not os.environ.get(name) for name in names):
+              raise SystemExit('缺少 Android 签名 Secret')
+          def escape(value):
+              return value.replace('\\', '\\\\').replace('\n', '\\n').replace('\r', '\\r').replace('=', '\\=').replace(':', '\\:').replace(' ', '\\ ')
+          key = Path(os.environ['RUNNER_TEMP']) / 'pooptoday-release.jks'
+          key.write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64'], validate=True))
+          key.chmod(0o600)
+          values = {'storeFile': str(key), 'storePassword': os.environ['STORE_PASSWORD'], 'keyPassword': os.environ['KEY_PASSWORD'], 'keyAlias': os.environ['KEY_ALIAS']}
+          config = Path('android/key.properties')
+          config.write_text(''.join(f'{name}={escape(value)}\n' for name, value in values.items()))
+          config.chmod(0o600)
+          PY
+      - name: 构建 Release APK
+        run: flutter build apk --release
+      - name: 验证 APK 签名并整理产物
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          VERSION=$(sed -n 's/^version: *\([^ ]*\).*/\1/p' pubspec.yaml)
+          mkdir -p dist
+          cp "$APK" "dist/PoopToday-$VERSION.apk"
+          cd dist
+          sha256sum ./*.apk > SHA256SUMS.txt
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: PoopToday-Android
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - name: 清理签名文件
+        if: always()
+        run: rm -f android/key.properties "$RUNNER_TEMP/pooptoday-release.jks"
+
+  release:
+    name: 创建版本草稿
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: 获取安装包
+        uses: actions/download-artifact@v4
+        with:
+          name: PoopToday-Android
+          path: dist
+      - name: 上传至 Release 草稿
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "PoopToday $RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" dist/* --clobber
