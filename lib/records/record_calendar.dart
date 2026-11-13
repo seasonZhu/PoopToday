@@ -23,9 +23,10 @@ class RecordCalendar extends StatefulWidget {
 }
 
 class _RecordCalendarState extends State<RecordCalendar> {
-  late DateTime month =
-      widget.initialMonth ??
-      DateTime(widget.selected.year, widget.selected.month);
+  late DateTime month = DateTime(
+    (widget.initialMonth ?? widget.selected).year,
+    (widget.initialMonth ?? widget.selected).month,
+  );
   void changeMonth(int delta) {
     setState(() => month = DateTime(month.year, month.month + delta));
     widget.onMonthChanged?.call(month);
