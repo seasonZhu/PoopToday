@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -17,6 +18,35 @@ class RetryBundle extends CachingAssetBundle {
 }
 
 void main() {
+  testWidgets('Android 显示原始构建号而非架构版本码', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    PackageInfo.setMockInitialValues(
+      appName: 'App',
+      packageName: 'app',
+      version: '1.0.1',
+      buildNumber: '2002',
+      buildSignature: '',
+    );
+    const channel = MethodChannel('poop_today/build_info');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      expect(call.method, 'buildNumber');
+      return '2';
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    await tester.pumpWidget(const MaterialApp(home: AboutPage()));
+    await tester.pumpAndSettle();
+    expect(find.text('版本号 1.0.1 · 构建号 2'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   setUp(() {
     PackageInfo.setMockInitialValues(
       appName: '拉💩了冒',
@@ -28,9 +58,11 @@ void main() {
   });
 
   testWidgets('关于页面显示安装包版本号和构建号', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     await tester.pumpWidget(const MaterialApp(home: AboutPage()));
     await tester.pumpAndSettle();
     expect(find.text('版本号 1.0.1 · 构建号 2'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   test('过滤截图容器和图片，保留正文及链接', () {

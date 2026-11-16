@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -26,7 +28,25 @@ class AboutPage extends StatefulWidget {
 }
 
 class _AboutPageState extends State<AboutPage> {
-  late final Future<PackageInfo> packageInfo = PackageInfo.fromPlatform();
+  late final Future<String> versionInfo = loadVersionInfo();
+
+  Future<String> loadVersionInfo() async {
+    final info = await PackageInfo.fromPlatform();
+    var buildNumber = info.buildNumber;
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        buildNumber =
+            await const MethodChannel('poop_today/build_info')
+                .invokeMethod<String>('buildNumber') ??
+            buildNumber;
+      } on PlatformException {
+        // 原生信息不可用时展示安装包实际构建号。
+      } on MissingPluginException {
+        // 兼容尚未重新安装原生插件的调试环境。
+      }
+    }
+    return '版本号 ${info.version} · 构建号 $buildNumber';
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -61,15 +81,15 @@ class _AboutPageState extends State<AboutPage> {
             trailing: const Icon(Icons.open_in_new),
             onTap: () => openExternalLink(context, entry.value),
           ),
-        FutureBuilder<PackageInfo>(
-          future: packageInfo,
+        FutureBuilder<String>(
+          future: versionInfo,
           builder: (context, snapshot) => ListTile(
             title: const Text('版本信息'),
             subtitle: Text(
               snapshot.hasError
                   ? '版本信息读取失败'
                   : snapshot.hasData
-                  ? '版本号 ${snapshot.data!.version} · 构建号 ${snapshot.data!.buildNumber}'
+                  ? snapshot.data!
                   : '正在读取…',
             ),
           ),

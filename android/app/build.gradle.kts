@@ -28,6 +28,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        resValue("string", "display_build_number", flutter.versionCode.toString())
     }
 
     signingConfigs {

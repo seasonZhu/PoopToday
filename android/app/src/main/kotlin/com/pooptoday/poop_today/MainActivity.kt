@@ -13,6 +13,14 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "poop_today/build_info")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "buildNumber") {
+                    result.success(getString(R.string.display_build_number))
+                } else {
+                    result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "poop_today/reminder_settings")
             .setMethodCallHandler { call, result ->
                 val power = getSystemService(POWER_SERVICE) as PowerManager
