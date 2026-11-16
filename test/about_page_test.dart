@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:poop_today/settings/about_page.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class RetryBundle extends CachingAssetBundle {
   bool fail = true;
@@ -16,6 +17,22 @@ class RetryBundle extends CachingAssetBundle {
 }
 
 void main() {
+  setUp(() {
+    PackageInfo.setMockInitialValues(
+      appName: '拉💩了冒',
+      packageName: 'poop_today',
+      version: '1.0.1',
+      buildNumber: '2',
+      buildSignature: '',
+    );
+  });
+
+  testWidgets('关于页面显示安装包版本号和构建号', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: AboutPage()));
+    await tester.pumpAndSettle();
+    expect(find.text('版本号 1.0.1 · 构建号 2'), findsOneWidget);
+  });
+
   test('过滤截图容器和图片，保留正文及链接', () {
     final result = documentWithoutImages('''# 标题
 <p align="center">

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 Future<void> openExternalLink(BuildContext context, String href) async {
   try {
@@ -17,8 +18,15 @@ Future<void> openExternalLink(BuildContext context, String href) async {
   }
 }
 
-class AboutPage extends StatelessWidget {
+class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
+
+  @override
+  State<AboutPage> createState() => _AboutPageState();
+}
+
+class _AboutPageState extends State<AboutPage> {
+  late final Future<PackageInfo> packageInfo = PackageInfo.fromPlatform();
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -53,6 +61,19 @@ class AboutPage extends StatelessWidget {
             trailing: const Icon(Icons.open_in_new),
             onTap: () => openExternalLink(context, entry.value),
           ),
+        FutureBuilder<PackageInfo>(
+          future: packageInfo,
+          builder: (context, snapshot) => ListTile(
+            title: const Text('版本信息'),
+            subtitle: Text(
+              snapshot.hasError
+                  ? '版本信息读取失败'
+                  : snapshot.hasData
+                  ? '版本号 ${snapshot.data!.version} · 构建号 ${snapshot.data!.buildNumber}'
+                  : '正在读取…',
+            ),
+          ),
+        ),
       ],
     ),
   );
