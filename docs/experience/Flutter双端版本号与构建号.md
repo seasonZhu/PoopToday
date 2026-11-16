@@ -44,6 +44,22 @@ APK versionCode = ABI 编号 × 1000 + 原始构建号
 
 新增或修改 Android 原生资源、通道后，需要重新构建并安装，热重载无法更新安装包内的原生实现。
 
+## AGP 9 自定义资源生成开关
+
+项目使用 Android Gradle Plugin 9.1.0。AGP 9 起，`resValues` 默认关闭，使用 `resValue` 生成 `display_build_number` 时，必须在 app 模块显式启用。
+
+```kotlin
+android {
+    buildFeatures {
+        resValues = true
+    }
+}
+```
+
+缺少该配置时，CI 会在配置 app 模块阶段报错 `defaultConfig contains custom resource values, but the feature is disabled`。日志可能定位到根目录 `android/build.gradle.kts` 的 `evaluationDependsOn(":app")`，实际需要修改的是 `android/app/build.gradle.kts`。
+
+可在 `android` 目录运行 `./gradlew :app:generateReleaseResValues --console=plain` 验证配置与资源生成，无需生成 APK。Flutter 页面测试和静态分析无法覆盖这类 Gradle 配置错误。本次修复后该资源生成任务已执行成功，生成的 XML 包含 `display_build_number`。直接运行 Gradle 时会读取已有 Flutter 生成配置，资源值应结合本次构建输入核对。
+
 ## 版本管理与覆盖安装
 
 ```yaml
