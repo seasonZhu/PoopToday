@@ -162,9 +162,17 @@ class Business {
     });
   }
 
-  Future<void> updatePhone(String phone, {String? nickname}) async {
+  Future<void> updatePhone(
+    String phone, {
+    String? nickname,
+    String? profileId,
+  }) async {
     await _db.transaction((txn) async {
-      final rows = await txn.query('profiles', where: _activeWhere);
+      final rows = await txn.query(
+        'profiles',
+        where: profileId == null ? _activeWhere : 'id = ? AND deleted = 0',
+        whereArgs: profileId == null ? null : [profileId],
+      );
       if (rows.isEmpty) throw StateError('请先创建档案');
       final row = rows.first;
       if (nickname == null || phone != row['phone']) {
@@ -184,9 +192,13 @@ class Business {
     });
   }
 
-  Future<void> deleteProfile() async {
+  Future<void> deleteProfile({String? profileId}) async {
     await _db.transaction((txn) async {
-      final rows = await txn.query('profiles', where: _activeWhere);
+      final rows = await txn.query(
+        'profiles',
+        where: profileId == null ? _activeWhere : 'id = ? AND deleted = 0',
+        whereArgs: profileId == null ? null : [profileId],
+      );
       if (rows.isEmpty) throw StateError('请先创建档案');
       final row = rows.first;
       await txn.delete(
@@ -441,8 +453,15 @@ class Business {
     });
   }
 
-  Future<String> exportBackup() => _db.transaction((txn) async {
-    final profiles = await txn.query('profiles', orderBy: 'rowid');
+  Future<String> exportBackup({String? profileId}) => _db.transaction((
+    txn,
+  ) async {
+    final profiles = await txn.query(
+      'profiles',
+      where: profileId == null ? null : 'id = ? AND deleted = 0',
+      whereArgs: profileId == null ? null : [profileId],
+      orderBy: 'rowid',
+    );
     final records = await txn.rawQuery(
       'SELECT records.* FROM records JOIN profiles ON records.profile_id = profiles.id WHERE profiles.deleted = 0 ORDER BY records.rowid',
     );
@@ -465,8 +484,12 @@ class Business {
                 key: profile[key],
             },
       ],
-      'records': records,
-      'no_poop': confirmations,
+      'records': records
+          .where((row) => profileId == null || row['profile_id'] == profileId)
+          .toList(),
+      'no_poop': confirmations
+          .where((row) => profileId == null || row['profile_id'] == profileId)
+          .toList(),
     });
   });
 

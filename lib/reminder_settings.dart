@@ -181,6 +181,10 @@ class _ReminderSettingsState extends State<ReminderSettings>
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('推送设置'),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => Navigator.pop(context),
+      ),
       actions: [
         IconButton(
           tooltip: '推送提醒说明',

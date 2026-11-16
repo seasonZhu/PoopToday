@@ -1,10 +1,32 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:poop_today/business.dart';
 
 void main() {
+  test('非默认档案编辑删除与单档案备份保持目标隔离', () async {
+    sqfliteFfiInit();
+    final app = await Business.open(
+      inMemoryDatabasePath,
+      factory: databaseFactoryFfi,
+    );
+    addTearDown(app.close);
+    await app.createProfile('13800138000');
+    final first = (await app.activeProfile())!['id'] as String;
+    await app.createProfile('13900139000');
+    final current = (await app.activeProfile())!['id'];
+    await app.updatePhone('13700137000', nickname: '家人', profileId: first);
+    expect((await app.activeProfile())!['id'], current);
+    final backup = jsonDecode(await app.exportBackup(profileId: first));
+    expect((backup['profiles'] as List).single['id'], first);
+    expect((backup['profiles'] as List).single['phone'], '13700137000');
+    await app.deleteProfile(profileId: first);
+    expect((await app.activeProfile())!['id'], current);
+    expect((await app.profiles()).length, 1);
+  });
+
   test('旧版档案迁移保留身份并允许同号独立档案', () async {
     sqfliteFfiInit();
     final dir = await Directory.systemTemp.createTemp('profiles_upgrade');

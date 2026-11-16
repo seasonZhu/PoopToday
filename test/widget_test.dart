@@ -99,9 +99,12 @@ void main() {
     await tester.tap(find.text('家人'));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('设置'));
+    await tester.tap(find.text('本地档案管理'));
+    await waitFor(tester, find.text('编辑'));
     expect(find.textContaining('138****8000'), findsOneWidget);
-    await tester.tap(find.text('修改手机号'));
+    await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
+    await waitFor(tester, find.widgetWithText(TextField, '家人'));
     await tester.enterText(find.widgetWithText(TextField, '家人'), '自己');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -192,6 +195,8 @@ void main() {
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.byTooltip('记录今天'));
     await tester.tap(find.textContaining('****').first);
+    await waitFor(tester, find.text('本地档案管理'));
+    await tester.tap(find.text('本地档案管理'));
     await waitFor(tester, find.text('导入备份'));
     await tester.tap(find.text('导入备份'));
     await waitFor(tester, find.text('选择合并方式'));
@@ -222,8 +227,15 @@ void main() {
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.byTooltip('记录今天'));
     await tester.tap(find.textContaining('****').first);
-    await waitFor(tester, find.text('导入备份'));
-    await tester.tap(find.text('导入备份'));
+    await waitFor(tester, find.text('本地档案管理'));
+    await tester.tap(find.text('本地档案管理'));
+    await waitFor(tester, find.byTooltip('新增档案'));
+    await tester.tap(find.byTooltip('新增档案'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('从备份导入数据'));
+    await tester.tap(find.text('从备份导入数据'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 350));
     await waitFor(tester, find.text('选择合并方式'));
     await tester.tap(find.text('导入优先'));
     await waitFor(tester, find.textContaining('导入内容优先'));
@@ -231,8 +243,13 @@ void main() {
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(await tester.runAsync(app.phone), '13900139000');
-    await waitFor(tester, find.text('导入备份'));
-    await tester.tap(find.text('导入备份'));
+    await waitFor(tester, find.byTooltip('新增档案'));
+    await tester.tap(find.byTooltip('新增档案'));
+    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('从备份导入数据'));
+    await tester.tap(find.text('从备份导入数据'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 350));
     await waitFor(tester, find.text('选择合并方式'));
     await tester.tap(find.text('导入优先'));
     await waitFor(tester, find.textContaining('导入内容优先'));
@@ -260,9 +277,12 @@ void main() {
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.byTooltip('记录今天'));
     await tester.tap(find.text('138****8000'));
+    await waitFor(tester, find.text('本地档案管理'));
+    await tester.tap(find.text('本地档案管理'));
     await waitFor(tester, find.text('导出备份'));
     await tester.tap(find.text('导出备份'));
     await tester.pumpAndSettle();
+    await waitFor(tester, find.textContaining('未加密'));
     expect(find.textContaining('未加密'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
@@ -288,12 +308,18 @@ void main() {
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.byTooltip('记录今天'));
     await tester.tap(find.text('138****8000'));
+    await waitFor(tester, find.text('本地档案管理'));
+    await tester.tap(find.text('本地档案管理'));
     await waitFor(tester, find.text('导出备份'));
     await tester.tap(find.text('导出备份'));
-    await tester.pumpAndSettle();
+    await waitFor(tester, find.text('确认'));
     await tester.tap(find.text('确认'));
     await waitFor(tester, find.text('导出失败，请重试'));
     expect(picker.called, isTrue);
+    expect(
+      picker.savedFileName,
+      'poop-today_13800138000_2026-11-09_00-00-00.json',
+    );
     expect(await tester.runAsync(app.exportBackup), before);
   });
 
@@ -342,15 +368,17 @@ void main() {
     await tester.tap(find.text('138****8000'));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('设置'));
-    await tester.tap(find.text('删除档案'));
+    await tester.tap(find.text('本地档案管理'));
+    await waitFor(tester, find.text('删除'));
+    await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('确认'));
     expect(find.textContaining('全部排便记录和日期状态'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(await tester.runAsync(app.phone), '13800138000');
-    await waitFor(tester, find.text('删除档案'));
-    await tester.tap(find.text('删除档案'));
+    await waitFor(tester, find.text('删除'));
+    await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('确认'));
     await tester.tap(find.text('确认'));
@@ -522,6 +550,7 @@ void main() {
 
 class FailingSavePicker extends FilePickerPlatform {
   bool called = false;
+  String? savedFileName;
   @override
   Future<Uri?> saveFile({
     required String fileName,
@@ -535,6 +564,7 @@ class FailingSavePicker extends FilePickerPlatform {
     WebOptions webOptions = const WebOptions(),
   }) async {
     called = true;
+    savedFileName = fileName;
     throw StateError('保存失败');
   }
 }

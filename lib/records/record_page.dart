@@ -32,13 +32,30 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
   final recordFeedback = RecordFeedback();
   bool exporting = false;
 
-  Future<void> exportBackup() async {
+  Future<void> exportBackup({String? profileId}) async {
     setState(() => exporting = true);
     try {
       if (!await confirm('备份未加密，包含手机号及排便数据，请妥善保管。是否继续保存？')) return;
-      final data = await widget.business.exportBackup();
+      final data = await widget.business.exportBackup(profileId: profileId);
+      final backup = jsonDecode(data) as Map<String, dynamic>;
+      final profile = (backup['profiles'] as List).firstWhere(
+        (p) => p['id'] == profileId,
+        orElse: () => <String, dynamic>{},
+      );
+      final nickname = ((profile['nickname'] as String?) ?? '').trim();
+      final time = DateTime.parse(backup['exported_at'] as String).toLocal();
+      String two(int value) => value.toString().padLeft(2, '0');
+      final timestamp =
+          '${time.year}-${two(time.month)}-${two(time.day)}_'
+          '${two(time.hour)}-${two(time.minute)}-${two(time.second)}';
+      final name = [
+        'poop-today',
+        if (profile['phone'] != null) profile['phone'] as String,
+        if (nickname.isNotEmpty) nickname,
+        timestamp,
+      ].join('_').replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '_');
       final result = await FilePicker.saveFile(
-        fileName: 'poop-today-${widget.business.today}.json',
+        fileName: '$name.json',
         bytes: Uint8List.fromList(utf8.encode(data)),
         mimeType: 'application/json',
       );
@@ -58,7 +75,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
 
   bool importing = false;
 
-  Future<void> importBackup() async {
+  Future<void> importBackup({String? profileId}) async {
     if (!await discard()) return;
     setState(() => importing = true);
     try {
@@ -71,7 +88,28 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
         allowedExtensions: isAndroid ? null : ['json'],
       );
       if (file == null) return;
-      final source = utf8.decode(await file.readAsBytes());
+      var source = utf8.decode(await file.readAsBytes());
+      if (profileId != null) {
+        await widget.business.previewImport(source);
+        final target = (await widget.business.profiles()).firstWhere(
+          (p) => p['id'] == profileId,
+        );
+        final data = jsonDecode(source) as Map<String, dynamic>;
+        final matches = (data['profiles'] as List)
+            .where((p) => p['phone'] == target['phone'])
+            .toList();
+        if (matches.isEmpty) {
+          throw const FormatException('备份中没有匹配手机号，请通过新增档案导入');
+        }
+        final ids = matches.map((p) => p['id']).toSet();
+        data['profiles'] = matches;
+        for (final table in ['records', 'no_poop']) {
+          data[table] = (data[table] as List)
+              .where((r) => ids.contains(r['profile_id']))
+              .toList();
+        }
+        source = jsonEncode(data);
+      }
       await widget.business.previewImport(source);
       if (!mounted) return;
       final preferLocal = await showDialog<bool>(
@@ -395,26 +433,32 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> applyProfileAction(String action) async {
+  Future<void> applyProfileAction(String action, {String? profileId}) async {
     setState(() => saving = true);
     try {
+      final target = profileId == null
+          ? await widget.business.activeProfile()
+          : (await widget.business.profiles()).firstWhere(
+              (p) => p['id'] == profileId,
+            );
+      if (!mounted) return;
       if (action == '导入备份') {
-        await importBackup();
+        await importBackup(profileId: profileId);
       } else if (action == '导出备份') {
-        await exportBackup();
+        await exportBackup(profileId: profileId);
       } else if (action == '删除档案') {
         if (!await confirm(
-          '删除档案 ${maskedPhone(phone!)}？将清除该档案的全部排便记录和日期状态，删除最后一个档案后需重新建档。',
+          '删除档案 ${maskedPhone(target!['phone'] as String)}？将清除该档案的全部排便记录和日期状态，删除最后一个档案后需重新建档。',
         )) {
           return;
         }
-        await widget.business.deleteProfile();
+        await widget.business.deleteProfile(profileId: profileId);
       } else if (action == '新增档案' || action == '修改手机号') {
         final controller = TextEditingController(
-          text: action == '修改手机号' ? phone : '',
+          text: action == '修改手机号' ? (target?['phone'] as String?) : '',
         );
         final nameController = TextEditingController(
-          text: action == '修改手机号' ? nickname : '',
+          text: action == '修改手机号' ? (target?['nickname'] as String?) : '',
         );
         final value = await showDialog<String>(
           context: context,
@@ -436,6 +480,11 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
               ],
             ),
             actions: [
+              if (action == '新增档案')
+                TextButton(
+                  onPressed: () => Navigator.pop(context, '__import__'),
+                  child: const Text('从备份导入数据'),
+                ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('取消'),
@@ -453,10 +502,18 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
         nameController.dispose();
         controller.dispose();
         if (value == null) return;
+        if (value == '__import__') {
+          await importBackup();
+          return;
+        }
         if (action == '新增档案') {
           await widget.business.createProfile(value, nickname: name);
         } else {
-          await widget.business.updatePhone(value, nickname: name);
+          await widget.business.updatePhone(
+            value,
+            nickname: name,
+            profileId: profileId,
+          );
         }
       } else {
         await widget.business.selectProfile(action);
@@ -477,15 +534,13 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
       await refresh();
     } on ArgumentError catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message.toString())),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message.toString())));
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('档案操作失败，请重试')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('档案操作失败，请重试')));
       }
     } finally {
       if (mounted) setState(() => saving = false);
