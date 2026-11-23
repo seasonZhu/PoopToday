@@ -7,10 +7,10 @@ import 'package:flutter/services.dart';
 
 import 'save_celebration.dart';
 
-import '../business.dart';
-import '../reminders.dart';
+import '../data/business.dart';
+import '../reminders/reminders.dart';
 import '../settings/profile_settings.dart';
-import '../time_picker.dart';
+import '../widgets/time_picker.dart';
 import 'record_calendar.dart';
 import 'home_statistics.dart';
 

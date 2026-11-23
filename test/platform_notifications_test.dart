@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:poop_today/platform_notifications.dart';
-import 'package:poop_today/reminders.dart';
+import 'package:poop_today/reminders/platform_notifications.dart';
+import 'package:poop_today/reminders/reminders.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

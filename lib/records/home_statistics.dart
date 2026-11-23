@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../business.dart';
+import '../data/business.dart';
 
 class HomeStatistics extends StatefulWidget {
   const HomeStatistics({

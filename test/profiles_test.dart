@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:poop_today/business.dart';
+import 'package:poop_today/data/business.dart';
 
 void main() {
   test('非默认档案编辑删除与单档案备份保持目标隔离', () async {

@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poop_today/business.dart';
-import 'package:poop_today/reminders.dart';
+import 'package:poop_today/data/business.dart';
+import 'package:poop_today/reminders/reminders.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class Notifications implements NotificationAdapter {

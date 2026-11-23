@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'business.dart';
+import '../data/business.dart';
 
 class ReminderNotification {
   const ReminderNotification(this.at, this.profileId);

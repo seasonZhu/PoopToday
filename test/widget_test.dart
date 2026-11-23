@@ -8,7 +8,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:poop_today/business.dart';
+import 'package:poop_today/data/business.dart';
 import 'package:poop_today/main.dart';
 
 Future<void> waitFor(WidgetTester tester, Finder finder) async {

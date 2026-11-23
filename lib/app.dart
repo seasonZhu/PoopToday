@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'business.dart';
-import 'reminders.dart';
+import 'data/business.dart';
+import 'reminders/reminders.dart';
 import 'records/record_page.dart';
 
 class PoopTodayApp extends StatelessWidget {

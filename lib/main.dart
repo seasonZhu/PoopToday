@@ -3,9 +3,9 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
 import 'app.dart';
-import 'business.dart';
-import 'reminders.dart';
-import 'platform_notifications.dart';
+import 'data/business.dart';
+import 'reminders/reminders.dart';
+import 'reminders/platform_notifications.dart';
 import 'records/record_page.dart';
 
 export 'app.dart';

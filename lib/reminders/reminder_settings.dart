@@ -1,4 +1,4 @@
-import 'time_picker.dart';
+import '../widgets/time_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';

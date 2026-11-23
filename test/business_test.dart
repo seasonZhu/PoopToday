@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:poop_today/business.dart';
+import 'package:poop_today/data/business.dart';
 
 void main() {
   test('历史日期支持多条、时间排序和修改日期，重启后保留', () async {

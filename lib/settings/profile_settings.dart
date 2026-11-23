@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../business.dart';
+import '../data/business.dart';
 import 'about_page.dart';
-import '../reminders.dart';
-import '../reminder_settings.dart';
+import '../reminders/reminders.dart';
+import '../reminders/reminder_settings.dart';
 
 class ProfileSettings extends StatelessWidget {
   const ProfileSettings({

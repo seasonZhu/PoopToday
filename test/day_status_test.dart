@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:poop_today/business.dart';
+import 'package:poop_today/data/business.dart';
 
 void main() {
   test('确认未排便事务失败回滚', () async {

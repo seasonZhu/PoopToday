@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poop_today/business.dart';
+import 'package:poop_today/data/business.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -99,6 +99,28 @@ void main() {
       throwsFormatException,
     );
   });
+  test('预览后设备时钟回拨，提交重新校验备份时间', () async {
+    sqfliteFfiInit();
+    var current = DateTime(2026, 11, 23, 12);
+    final app = await Business.open(
+      inMemoryDatabasePath,
+      factory: databaseFactoryFfi,
+      now: () => current,
+    );
+    addTearDown(app.close);
+    await app.createProfile('13800138000');
+    await app.saveToday('顺畅', '3');
+    final backup = await app.exportBackup();
+    await app.deleteRecord((await app.todayRecords()).single['id'] as String);
+    final preview = await app.previewImport(backup);
+    expect(preview.restored, 1);
+
+    current = DateTime(2026, 11, 22, 12);
+    await expectLater(app.applyImport(preview), throwsFormatException);
+    current = DateTime(2026, 11, 23, 12);
+    expect(await app.todayRecords(), isEmpty);
+  });
+
   test('事务写入失败全部回滚，空白设备恢复保留独立 UID', () async {
     sqfliteFfiInit();
     final dir = await Directory.systemTemp.createTemp('poop-import-');

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:poop_today/business.dart';
-import 'package:poop_today/reminders.dart';
-import 'package:poop_today/reminder_settings.dart';
+import 'package:poop_today/data/business.dart';
+import 'package:poop_today/reminders/reminders.dart';
+import 'package:poop_today/reminders/reminder_settings.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'reminders_test.dart' show Notifications;
