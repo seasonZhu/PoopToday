@@ -19,9 +19,10 @@
 你或许会疑惑，为什么建立档案时要输入手机号？它只是用来区分本地用户档案，应用无需联网，也无需短信验证。
 
 <p align="center">
-  <img src="image/IMG_3953.PNG" alt="日历与排便统计" width="30%" />
-  <img src="image/IMG_3955.PNG" alt="当日排便记录" width="30%" />
-  <img src="image/IMG_3954.PNG" alt="档案与备份设置" width="30%" />
+  <img src="image/IMG_3969.PNG" alt="日历与排便统计" width="20%" />
+  <img src="image/IMG_3970.PNG" alt="当日排便记录" width="20%" />
+  <img src="image/IMG_3971.PNG" alt="设置" width="20%" />
+  <img src="image/IMG_3972.PNG" alt="档案与备份设置" width="20%" />
 </p>
 
 ## 我的思考
