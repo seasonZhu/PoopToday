@@ -250,6 +250,11 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
 
   String? phone;
   String nickname = "";
+  String get profileTitle {
+    final name = nickname.trim();
+    return name.isNotEmpty ? name : maskedPhone(phone!);
+  }
+
   String maskedPhone(String value) => value.length == 11
       ? "${value.substring(0, 3)}****${value.substring(7)}"
       : value;
@@ -578,15 +583,19 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
     },
     child: Scaffold(
       appBar: AppBar(
+        centerTitle: calendarHome && phone != null ? false : null,
         title: Text(
-          calendarHome ? '拉💩了冒' : '当日记录',
+          calendarHome ? (phone == null ? '拉💩了冒' : profileTitle) : '当日记录',
           style: const TextStyle(fontSize: 20),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
           if (phone != null && calendarHome)
-            TextButton(
+            IconButton(
+              tooltip: '设置',
+              icon: const Icon(Icons.settings_outlined),
               onPressed: saving ? null : manageProfiles,
-              child: Text(nickname.isNotEmpty ? nickname : maskedPhone(phone!)),
             ),
         ],
         leading: calendarHome

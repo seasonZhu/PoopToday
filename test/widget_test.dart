@@ -85,6 +85,30 @@ void main() {
     expect(find.textContaining('次'), findsNothing);
   });
 
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    testWidgets('$platform 首页标题居左、设置按钮居右', (tester) async {
+      sqfliteFfiInit();
+      final app = (await tester.runAsync(
+        () => Business.open(inMemoryDatabasePath, factory: databaseFactoryFfi),
+      ))!;
+      addTearDown(() => tester.runAsync(app.close));
+      await tester.runAsync(
+        () => app.createProfile('13800138000', nickname: ' '),
+      );
+      await tester.pumpWidget(PoopTodayApp(business: app));
+      final title = find.text('138****8000');
+      await waitFor(tester, find.text('暂无排便记录'));
+      expect(title, findsOneWidget);
+      final bar = tester.getRect(find.byType(AppBar));
+      expect(tester.getTopLeft(title).dx - bar.left, lessThan(32));
+      expect(
+        bar.right - tester.getTopRight(find.byTooltip('设置')).dx,
+        lessThan(32),
+      );
+      expect(find.text('13800138000'), findsNothing);
+    }, variant: TargetPlatformVariant({platform}));
+  }
+
   testWidgets('昵称展示、设置导航与编辑持久化', (tester) async {
     sqfliteFfiInit();
     final app = (await tester.runAsync(
@@ -96,7 +120,7 @@ void main() {
     );
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.text('家人'));
-    await tester.tap(find.text('家人'));
+    await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('设置'));
     await tester.tap(find.text('本地档案管理'));
@@ -110,6 +134,11 @@ void main() {
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('自己'));
     expect((await tester.runAsync(app.activeProfile))?['nickname'], '自己');
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await waitFor(tester, find.text('自己'));
+    expect(find.text('家人'), findsNothing);
   });
 
   testWidgets('当日页四档必填、多记录、互斥转换与返回', (tester) async {
@@ -194,7 +223,7 @@ void main() {
     addTearDown(() => FilePickerPlatform.instance = original);
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.byTooltip('记录今天'));
-    await tester.tap(find.textContaining('****').first);
+    await tester.tap(find.byTooltip('设置'));
     await waitFor(tester, find.text('本地档案管理'));
     await tester.tap(find.text('本地档案管理'));
     await waitFor(tester, find.text('导入备份'));
@@ -226,7 +255,7 @@ void main() {
     addTearDown(() => FilePickerPlatform.instance = original);
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.byTooltip('记录今天'));
-    await tester.tap(find.textContaining('****').first);
+    await tester.tap(find.byTooltip('设置'));
     await waitFor(tester, find.text('本地档案管理'));
     await tester.tap(find.text('本地档案管理'));
     await waitFor(tester, find.byTooltip('新增档案'));
@@ -276,7 +305,7 @@ void main() {
     await tester.runAsync(() => app.createProfile('13800138000'));
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.byTooltip('记录今天'));
-    await tester.tap(find.text('138****8000'));
+    await tester.tap(find.byTooltip('设置'));
     await waitFor(tester, find.text('本地档案管理'));
     await tester.tap(find.text('本地档案管理'));
     await waitFor(tester, find.text('导出备份'));
@@ -307,7 +336,7 @@ void main() {
     addTearDown(() => FilePickerPlatform.instance = original);
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.byTooltip('记录今天'));
-    await tester.tap(find.text('138****8000'));
+    await tester.tap(find.byTooltip('设置'));
     await waitFor(tester, find.text('本地档案管理'));
     await tester.tap(find.text('本地档案管理'));
     await waitFor(tester, find.text('导出备份'));
@@ -365,7 +394,8 @@ void main() {
     await tester.runAsync(() => app.createProfile('13800138000'));
     await tester.pumpWidget(PoopTodayApp(business: app));
     await waitFor(tester, find.byTooltip('记录今天'));
-    await tester.tap(find.text('138****8000'));
+    expect(find.text('138****8000'), findsOneWidget);
+    await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
     await waitFor(tester, find.text('设置'));
     await tester.tap(find.text('本地档案管理'));
